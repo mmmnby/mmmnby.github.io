@@ -22,10 +22,10 @@
 ##############################################################################
 # Set Variables
 
-$guestbookurl = "http://your.host.com/~yourname/guestbook.html";
+$guestbookurl = "https://mcommunications.github.io/cgi-bin/guestbook.html";
 $guestbookreal = "/home/yourname/public_html/guestbook.html";
 $guestlog = "/home/yourname/public_html/guestlog.html";
-$cgiurl = "http://your.host.com/cgi-bin/guestbook.pl";
+$cgiurl = "https://mcommunications.github.io/cgi-bin/guestbook.pl";
 $date_command = "/usr/bin/date";
 
 # Set Your Options:
