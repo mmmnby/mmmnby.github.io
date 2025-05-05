@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Zoomed Video with Time</title>
     <style>
-               * {
+        * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
@@ -20,8 +20,8 @@
 
         .video-container {
             position: fixed;
-            width: 375px;  /* Original screen width */
-            height: 667px; /* Original screen height */
+            width: 375px;
+            height: 667px;
             left: 50%;
             top: 50%;
             transform: translate(-50%, -50%) scale(0.8);
@@ -37,22 +37,23 @@
 
         .time-display {
             position: absolute;
-            top: 40px; /* 32px desired / 0.8 scale */
-            left: 30px; /* 24px desired / 0.8 scale */
+            top: 40px;
+            left: 30px;
             color: white;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            font-size: 30px; /* 24px desired / 0.8 scale */
+            font-size: 30px;
             font-weight: 600;
             text-shadow: 0 2px 4px rgba(0,0,0,0.5);
             z-index: 100;
-        }/* Previous styles remain unchanged */
+        }
+
         .date-display {
             position: absolute;
-            bottom: 40px; /* 32px desired / 0.8 scale */
-            left: 30px; /* 24px desired / 0.8 scale */
+            bottom: 40px;
+            left: 30px;
             color: rgb(93,97,103);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            font-size: 25px; /* 20px desired / 0.8 scale */
+            font-size: 25px;
             font-weight: 600;
             text-shadow: 0 2px 4px rgba(0,0,0,0.2);
             z-index: 100;
@@ -69,7 +70,6 @@
     </div>
 
     <script>
-        // Previous time code remains unchanged
         function updateTime() {
             const now = new Date();
             const timeString = now.toLocaleTimeString('en-US', {
@@ -80,33 +80,24 @@
             document.getElementById('time').textContent = timeString;
         }
 
-        updateTime();
-        setInterval(updateTime, 1000);
-
-               // iOS video play handler
-        document.addEventListener('touchstart', () => {
-            document.getElementById('myVideo').play();
-        });
-        // Static future date calculation
         function setFutureDate() {
             const now = new Date();
             const future = new Date(now.getTime() + (28 * 60 * 1000));
             
-            const options = {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false
-            };
-            
             document.getElementById('date').textContent = 
-                future.toLocaleDateString('en-US', options) + ' ' +
-                future.toLocaleTimeString('en-US', {hour12: false}).slice(0, 5);
+                `${future.getDate()} ${future.toLocaleString('default', { month: 'long' })} ${future.getFullYear()} ` +
+                `${String(future.getHours()).padStart(2, '0')}:${String(future.getMinutes()).padStart(2, '0')}`;
         }
 
-        setFutureDate(); // Set once on page load
+        // Initialize displays
+        updateTime();
+        setFutureDate();
+        setInterval(updateTime, 1000);
+
+        // iOS video play handler
+        document.addEventListener('touchstart', () => {
+            document.getElementById('myVideo').play();
+        });
     </script>
 </body>
 </html>
