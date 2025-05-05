@@ -4,44 +4,95 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Zoomed Video with Time</title>
-<style>
-    .top-time {
-        position: absolute;
-        top: 1.25px; /* Adjusted for 1px shift */
-        left: 50%;
-        transform: translateX(-50%);
-        color: black;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-        font-size: 17.5px;
-        font-weight: 600;
-        text-shadow: 0 0px 0px rgba(0,0,0,0.5);
-        z-index: 200;
-    }
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-    .time-display {
-        position: absolute;
-        top: 41.25px; /* 40px original + 1px adjustment */
-        left: 30px;
-        color: black;
-        font-family: Arial, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-        font-size: 30px;
-        font-weight: 600;
-        text-shadow: 0 0px 0px rgba(0,0,0,0.5);
-        z-index: 100;
-    }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: black;
+        }
 
-    .date-display {
-        position: absolute;
-        bottom: 41.25px; /* 40px original + 1px adjustment */
-        left: 30px;
-        color: rgb(93,97,103);
-        font-family: Arial, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-        font-size: 25px;
-        font-weight: 600;
-        text-shadow: 0 0px 0px rgba(0,0,0,0.2);
-        z-index: 100;
-    }
-</style>
+        .video-container {
+            position: fixed;
+            width: 375px;
+            height: 667px;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%) scale(0.8) translateZ(0); /* Added translateZ for rendering fix */
+            transform-origin: center;
+            overflow: hidden;
+            backface-visibility: hidden; /* Prevent sub-pixel rendering issues */
+        }
+
+        #myVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            margin: 0;
+            padding: 0;
+        }
+
+        .top-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 375px;
+            height: 23px; /* Adjusted to whole pixel equivalent */
+            overflow: hidden;
+            z-index: 150;
+            transform: translateZ(0); /* Fix rendering offset */
+        }
+
+        .top-bar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: top;
+        } 
+
+        .top-time {
+            position: absolute;
+            top: 1px; /* Adjusted from 0px */
+            left: 50%;
+            transform: translateX(-50%);
+            color: black;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-size: 17.5px;
+            font-weight: 600;
+            text-shadow: 0 0px 0px rgba(0,0,0,0.5);
+            z-index: 200;
+        }
+
+        .time-display {
+            position: absolute;
+            top: 39px; /* Adjusted from 40px */
+            left: 30px;
+            color: black;
+            font-family: Arial, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-size: 30px;
+            font-weight: 600;
+            text-shadow: 0 0px 0px rgba(0,0,0,0.5);
+            z-index: 100;
+        }
+
+        .date-display {
+            position: absolute;
+            bottom: 39px; /* Adjusted from 40px */
+            left: 30px;
+            color: rgb(93,97,103);
+            font-family: Arial, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-size: 25px;
+            font-weight: 600;
+            text-shadow: 0 0px 0px rgba(0,0,0,0.2);
+            z-index: 100;
+        }
+    </style>
 </head>
 <body>
     <div class="video-container">
@@ -59,7 +110,6 @@
     <script>
         function updateTime() {
             const now = new Date();
-            // Main time display
             const timeString = now.toLocaleTimeString('en-US', {
                 hour: '2-digit',
                 minute: '2-digit',
@@ -67,7 +117,6 @@
             });
             document.getElementById('time').textContent = timeString;
             
-            // Top bar 24-hour time
             const topTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
             document.getElementById('top-time').textContent = topTime;
         }
@@ -84,12 +133,10 @@
                 `${String(future.getMinutes()).padStart(2, '0')}`;
         }
 
-        // Initialize displays
         updateTime();
         setFutureDate();
         setInterval(updateTime, 1000);
 
-        // iOS video play handler
         document.addEventListener('touchstart', () => {
             document.getElementById('myVideo').play();
         });
