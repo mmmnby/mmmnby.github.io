@@ -1,3 +1,6 @@
+For some reason the elements including the video display 1 px or 2px higher that it should be. Fix by shifting down 2px. Don’t use JavaScript to shift down  Output full working html. 
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -136,11 +139,10 @@
             const container = document.querySelector('.video-container');
             const rect = container.getBoundingClientRect();
             
-            // Added 2px to Y translation to shift down
             container.style.transform = `
                 translate(
                     ${Math.round(-rect.width/2)}px,
-                    ${Math.round(-rect.height/2 + 2)}px
+                    ${Math.round(-rect.height/2)}px
                 ) 
                 scale(0.8)
             `;
