@@ -85,8 +85,11 @@
             const future = new Date(now.getTime() + (28 * 60 * 1000));
             
             document.getElementById('date').textContent = 
-                `${future.getDate()} ${future.toLocaleString('default', { month: 'long' })} ${future.getFullYear()} ` +
-                `${String(future.getHours()).padStart(2, '0')}:${String(future.getMinutes()).padStart(2, '0')}`;
+                `${future.getDate()} ` +
+                `${future.toLocaleString('default', { month: 'long' })} ` +
+                `${future.getFullYear()}, ` +
+                `${String(future.getHours()).padStart(2, '0')}:` +
+                `${String(future.getMinutes()).padStart(2, '0')}`;
         }
 
         // Initialize displays
