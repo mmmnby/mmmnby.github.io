@@ -23,7 +23,7 @@
             width: 375px;
             height: 667px;
             left: 50%;
-            top: 50%;
+            top: calc(50% + 2px); /* Shifted down 2px */
             transform: translate(-50%, -50%) scale(0.8);
             transform-origin: center;
             overflow: hidden;
@@ -40,7 +40,7 @@
             top: 0;
             left: 0;
             width: 375px;
-            height: 22.5px; /* 18px visible after scaling */
+            height: 22.5px;
             overflow: hidden;
             z-index: 150;
         }
@@ -59,7 +59,7 @@
             transform: translateX(-50%);
             color: black;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            font-size: 17.5px; /* 14px desired size / 0.8 scale */
+            font-size: 17.5px;
             font-weight: 600;
             text-shadow: 0 0px 0px rgba(0,0,0,0.5);
             z-index: 200;
@@ -106,7 +106,6 @@
     <script>
         function updateTime() {
             const now = new Date();
-            // Main time display
             const timeString = now.toLocaleTimeString('en-US', {
                 hour: '2-digit',
                 minute: '2-digit',
@@ -114,7 +113,6 @@
             });
             document.getElementById('time').textContent = timeString;
             
-            // Top bar 24-hour time
             const topTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
             document.getElementById('top-time').textContent = topTime;
         }
@@ -131,15 +129,13 @@
                 `${String(future.getMinutes()).padStart(2, '0')}`;
         }
 
-        // Initialize displays
         updateTime();
         setFutureDate();
         setInterval(updateTime, 1000);
 
-        // iOS video play handler
         document.addEventListener('touchstart', () => {
             document.getElementById('myVideo').play();
         });
     </script>
 </body>
-</html>. For some reason the elements including the video display or 2px higher that it should be. Shift down by 2 px
+</html>
