@@ -5,13 +5,42 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Zoomed Video with Time</title>
     <style>
-        /* Previous styles remain the same */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: black;
+        }
+
+        .video-container {
+            position: fixed;
+            width: 375px;
+            height: 667px;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%) scale(0.8);
+            transform-origin: center;
+            overflow: hidden;
+        }
+
+        #myVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
         .top-bar {
             position: absolute;
             top: 0;
             left: 0;
-            width: 375px; /* 300px desired / 0.8 scale */
-            height: 22.5px; /* 18px desired / 0.8 scale */
+            width: 375px;
+            height: 22.5px; /* 18px visible after scaling */
             overflow: hidden;
             z-index: 150;
         }
@@ -28,51 +57,4 @@
             left: 50%;
             transform: translateX(-50%);
             color: white;
-            font-family: monospace;
-            font-size: 17.5px; /* 14px desired / 0.8 scale */
-            font-weight: bold;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-            z-index: 200;
-        }
-    </style>
-</head>
-<body>
-    <div class="video-container">
-        <video id="myVideo" autoplay muted playsinline loop>
-            <source src="Camera-roll.mp4" type="video/mp4">
-        </video>
-        <div class="top-bar">
-            <img src="Topbar.jpg" alt="Top bar">
-            <div class="top-time" id="top-time"></div>
-        </div>
-        <div class="time-display" id="time"></div>
-        <div class="date-display" id="date"></div>
-    </div>
-
-    <script>
-        function updateTime() {
-            const now = new Date();
-            // Update main time display
-            const timeString = now.toLocaleTimeString('en-US', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-            });
-            document.getElementById('time').textContent = timeString;
-            
-            // Update top bar time (24-hour format)
-            const topTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-            document.getElementById('top-time').textContent = topTime;
-        }
-
-        // Keep existing setFutureDate function
-        
-        // Initialize all elements
-        updateTime();
-        setFutureDate();
-        setInterval(updateTime, 1000);
-
-        // Keep iOS video handler
-    </script>
-</body>
-</html>
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
