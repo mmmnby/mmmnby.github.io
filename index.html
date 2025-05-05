@@ -5,7 +5,47 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Zoomed Video with Time</title>
     <style>
-        /* Previous styles remain unchanged */
+               * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: black;
+        }
+
+        .video-container {
+            position: fixed;
+            width: 375px;  /* Original screen width */
+            height: 667px; /* Original screen height */
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%) scale(0.8);
+            transform-origin: center;
+            overflow: hidden;
+        }
+
+        #myVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .time-display {
+            position: absolute;
+            top: 40px; /* 32px desired / 0.8 scale */
+            left: 30px; /* 24px desired / 0.8 scale */
+            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-size: 30px; /* 24px desired / 0.8 scale */
+            font-weight: 600;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            z-index: 100;
+        }/* Previous styles remain unchanged */
         .date-display {
             position: absolute;
             bottom: 40px; /* 32px desired / 0.8 scale */
