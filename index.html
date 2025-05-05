@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Video Time Display</title>
+    <title>Zoomed Video with Time</title>
     <style>
         * {
             margin: 0;
@@ -42,7 +42,7 @@
             object-fit: cover;
         }
 
-        .time-display {
+      .time-display {
             position: absolute;
             top: 40px;
             left: 50%;
@@ -58,13 +58,27 @@
             border-radius: 8px;
             box-shadow: none;
         }
+
+        .time-display::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 110%;
+            height: 100%;
+            background: white;
+            padding: 8px 20px;
+            border-radius: 8px;
+            z-index: 99;
+        }
     </style>
 </head>
 <body>
     <div class="scaler">
         <div class="video-container">
             <video id="myVideo" autoplay muted playsinline loop>
-                <source src="Camera-roll.mp4" type="video/m4">
+                <source src="Camera-roll.mp4" type="video/mp4">
             </video>
             <div class="time-display" id="time"></div>
         </div>
