@@ -136,10 +136,11 @@
             const container = document.querySelector('.video-container');
             const rect = container.getBoundingClientRect();
             
+            // Added 2px to Y translation to shift down
             container.style.transform = `
                 translate(
                     ${Math.round(-rect.width/2)}px,
-                    ${Math.round(-rect.height/2) + 2}px
+                    ${Math.round(-rect.height/2 + 2)}px
                 ) 
                 scale(0.8)
             `;
