@@ -42,21 +42,17 @@
             object-fit: cover;
         }
 
-      .time-display {
+        .time-display {
             position: absolute;
-            top: 40px;
+            top: 60px;  /* Adjusted position */
             left: 50%;
             transform: translateX(-50%);
             color: black;
             font-family: Arial, sans-serif;
-            font-size: 40px;
+            font-size: 36px;  /* 45px effective size when scaled down */
             font-weight: bold;
             z-index: 100;
             white-space: nowrap;
-            padding: 12px 24px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: none;
         }
 
         .time-display::before {
