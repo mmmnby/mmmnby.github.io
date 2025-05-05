@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, shrink-to-fit=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Video with Time</title>
     <style>
         * {
@@ -12,55 +12,47 @@
         }
 
         html, body {
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
             overflow: hidden;
             background: black;
         }
 
         .video-container {
             position: fixed;
-            width: 100vw;
-            height: 100vh;
+            top: 0;
+            left: 0;
+            width: 375px;
+            height: 667px;
             overflow: hidden;
-            aspect-ratio: 9/16; /* Maintain vertical video aspect ratio */
         }
 
         #myVideo {
             position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
             object-fit: cover;
-            transform: translateZ(0); /* Enable hardware acceleration */
         }
 
         .time-display {
             position: fixed;
-            top: 4.8vh; /* 32px/667px */
-            left: 6.4vw; /* 24px/375px */
+            top: 32px;
+            left: 24px;
             color: white;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            font-size: 6.4vw; /* 24px/375px */
+            font-size: 24px;
             font-weight: 600;
-            text-shadow: 0 0.5vh 1vh rgba(0,0,0,0.5);
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
             z-index: 100;
-            white-space: nowrap;
-        }
-
-        /* Maintain vertical aspect ratio for any zoom level */
-        @media (max-aspect-ratio: 9/16) {
-            .video-container {
-                width: calc(100vh * (9/16));
-                height: 100vh;
-                left: 50%;
-                transform: translateX(-50%);
-            }
         }
     </style>
 </head>
 <body>
     <div class="video-container">
         <video id="myVideo" autoplay muted playsinline loop>
+            <!-- Replace with your vertical video source -->
             <source src="Camera-roll.mp4" type="video/mp4">
         </video>
     </div>
@@ -77,26 +69,22 @@
             document.getElementById('time').textContent = timeString;
         }
 
+        // Initial update
         updateTime();
+        // Update every second
         setInterval(updateTime, 1000);
 
-        // Handle iOS viewport zoom behavior
-        document.addEventListener('touchstart', function(e) {
+        // iOS video play fix
+        document.addEventListener('touchstart', function() {
             document.getElementById('myVideo').play();
-            e.preventDefault();
-        }, { passive: false });
-
-        // Reset viewport scaling
-        let viewport = document.querySelector('meta[name="viewport"]');
-        function resetViewport() {
-            viewport.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
-        }
-        window.addEventListener('orientationchange', resetViewport);
-        window.addEventListener('resize', resetViewport);
+        }, false);
     </script>
 </body>
 </html>
 
+
+
+        
 
 
 
