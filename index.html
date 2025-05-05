@@ -23,30 +23,28 @@
             width: 375px;
             height: 667px;
             left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%) scale(0.8) translateZ(0); /* Added translateZ for rendering fix */
+            top: calc(50% + 0.5px); /* Vertical alignment fix */
+            transform: translate(-50%, -50%) scale(0.8);
             transform-origin: center;
             overflow: hidden;
-            backface-visibility: hidden; /* Prevent sub-pixel rendering issues */
+            backface-visibility: hidden;
         }
 
         #myVideo {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            margin: 0;
-            padding: 0;
+            transform: translateY(0.5px); /* Video position fix */
         }
 
         .top-bar {
             position: absolute;
-            top: 0;
+            top: -0.5px; /* Offset alignment fix */
             left: 0;
             width: 375px;
-            height: 23px; /* Adjusted to whole pixel equivalent */
+            height: 22.4px; /* Precise 18px equivalent (22.4 * 0.8 = 17.92 ≈ 18) */
             overflow: hidden;
             z-index: 150;
-            transform: translateZ(0); /* Fix rendering offset */
         }
 
         .top-bar img {
@@ -58,38 +56,35 @@
 
         .top-time {
             position: absolute;
-            top: 1px; /* Adjusted from 0px */
+            top: 1.25px; /* Scaled to 1px (1.25 * 0.8 = 1) */
             left: 50%;
             transform: translateX(-50%);
             color: black;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             font-size: 17.5px;
             font-weight: 600;
-            text-shadow: 0 0px 0px rgba(0,0,0,0.5);
             z-index: 200;
         }
 
         .time-display {
             position: absolute;
-            top: 39px; /* Adjusted from 40px */
+            top: 39.5px; /* 40px desired (39.5 / 0.8 = 49.375 ≈ 49.38) */
             left: 30px;
             color: black;
-            font-family: Arial, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-family: Arial, sans-serif;
             font-size: 30px;
             font-weight: 600;
-            text-shadow: 0 0px 0px rgba(0,0,0,0.5);
             z-index: 100;
         }
 
         .date-display {
             position: absolute;
-            bottom: 39px; /* Adjusted from 40px */
+            bottom: 39.5px; /* 40px desired */
             left: 30px;
             color: rgb(93,97,103);
-            font-family: Arial, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-family: Arial, sans-serif;
             font-size: 25px;
             font-weight: 600;
-            text-shadow: 0 0px 0px rgba(0,0,0,0.2);
             z-index: 100;
         }
     </style>
@@ -138,7 +133,8 @@
         setInterval(updateTime, 1000);
 
         document.addEventListener('touchstart', () => {
-            document.getElementById('myVideo').play();
+            const video = document.getElementById('myVideo');
+            if(video.paused) video.play();
         });
     </script>
 </body>
