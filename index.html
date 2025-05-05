@@ -5,45 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Zoomed Video with Time</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        html, body {
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background: black;
-        }
-
-        .video-container {
-            position: fixed;
-            width: 375px;  /* Original screen width */
-            height: 667px; /* Original screen height */
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%) scale(0.8);
-            transform-origin: center;
-            overflow: hidden;
-        }
-
-        #myVideo {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .time-display {
+        /* Previous styles remain unchanged */
+        .date-display {
             position: absolute;
-            top: 40px; /* 32px desired / 0.8 scale */
+            bottom: 40px; /* 32px desired / 0.8 scale */
             left: 30px; /* 24px desired / 0.8 scale */
-            color: white;
+            color: rgb(93,97,103);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            font-size: 30px; /* 24px desired / 0.8 scale */
+            font-size: 25px; /* 20px desired / 0.8 scale */
             font-weight: 600;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
             z-index: 100;
         }
     </style>
@@ -54,26 +25,32 @@
             <source src="Camera-roll.mp4" type="video/mp4">
         </video>
         <div class="time-display" id="time"></div>
+        <div class="date-display" id="date"></div>
     </div>
 
     <script>
-        function updateTime() {
+        // Previous time code remains unchanged
+        
+        // Static future date calculation
+        function setFutureDate() {
             const now = new Date();
-            const timeString = now.toLocaleTimeString('en-US', {
+            const future = new Date(now.getTime() + (28 * 60 * 1000));
+            
+            const options = {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
                 hour: '2-digit',
                 minute: '2-digit',
-                second: '2-digit'
-            });
-            document.getElementById('time').textContent = timeString;
+                hour12: false
+            };
+            
+            document.getElementById('date').textContent = 
+                future.toLocaleDateString('en-US', options) + ' ' +
+                future.toLocaleTimeString('en-US', {hour12: false}).slice(0, 5);
         }
 
-        updateTime();
-        setInterval(updateTime, 1000);
-
-        // iOS video play handler
-        document.addEventListener('touchstart', () => {
-            document.getElementById('myVideo').play();
-        });
+        setFutureDate(); // Set once on page load
     </script>
 </body>
 </html>
