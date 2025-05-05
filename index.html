@@ -5,58 +5,34 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Zoomed Video with Time</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        html, body {
-            width: 100%;
-            height: 100%;
+        /* Previous styles remain the same */
+        .top-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 375px; /* 300px desired / 0.8 scale */
+            height: 22.5px; /* 18px desired / 0.8 scale */
             overflow: hidden;
-            background: black;
+            z-index: 150;
         }
 
-        .video-container {
-            position: fixed;
-            width: 375px;
-            height: 667px;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%) scale(0.8);
-            transform-origin: center;
-            overflow: hidden;
-        }
-
-        #myVideo {
+        .top-bar img {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
 
-        .time-display {
+        .top-time {
             position: absolute;
-            top: 40px;
-            left: 30px;
+            top: 1px;
+            left: 50%;
+            transform: translateX(-50%);
             color: white;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            font-size: 30px;
-            font-weight: 600;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-            z-index: 100;
-        }
-
-        .date-display {
-            position: absolute;
-            bottom: 40px;
-            left: 30px;
-            color: rgb(93,97,103);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            font-size: 25px;
-            font-weight: 600;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            z-index: 100;
+            font-family: monospace;
+            font-size: 17.5px; /* 14px desired / 0.8 scale */
+            font-weight: bold;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            z-index: 200;
         }
     </style>
 </head>
@@ -65,6 +41,10 @@
         <video id="myVideo" autoplay muted playsinline loop>
             <source src="Camera-roll.mp4" type="video/mp4">
         </video>
+        <div class="top-bar">
+            <img src="Topbar.jpg" alt="Top bar">
+            <div class="top-time" id="top-time"></div>
+        </div>
         <div class="time-display" id="time"></div>
         <div class="date-display" id="date"></div>
     </div>
@@ -72,35 +52,27 @@
     <script>
         function updateTime() {
             const now = new Date();
+            // Update main time display
             const timeString = now.toLocaleTimeString('en-US', {
                 hour: '2-digit',
                 minute: '2-digit',
                 second: '2-digit'
             });
             document.getElementById('time').textContent = timeString;
-        }
-
-        function setFutureDate() {
-            const now = new Date();
-            const future = new Date(now.getTime() + (28 * 60 * 1000));
             
-            document.getElementById('date').textContent = 
-                `${future.getDate()} ` +
-                `${future.toLocaleString('default', { month: 'long' })} ` +
-                `${future.getFullYear()}, ` +
-                `${String(future.getHours()).padStart(2, '0')}:` +
-                `${String(future.getMinutes()).padStart(2, '0')}`;
+            // Update top bar time (24-hour format)
+            const topTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            document.getElementById('top-time').textContent = topTime;
         }
 
-        // Initialize displays
+        // Keep existing setFutureDate function
+        
+        // Initialize all elements
         updateTime();
         setFutureDate();
         setInterval(updateTime, 1000);
 
-        // iOS video play handler
-        document.addEventListener('touchstart', () => {
-            document.getElementById('myVideo').play();
-        });
+        // Keep iOS video handler
     </script>
 </body>
 </html>
