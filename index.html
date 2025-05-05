@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Video with Time</title>
+    <meta name="viewport" content="width=312.5, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <title>Zoomed Video with Time</title>
     <style>
         * {
             margin: 0;
@@ -22,8 +22,8 @@
             position: fixed;
             top: 0;
             left: 0;
-            width: 375px;
-            height: 667px;
+            width: 312.5px;
+            height: 555.83px;
             overflow: hidden;
         }
 
@@ -34,17 +34,18 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
+            transform: translateZ(0);
         }
 
         .time-display {
             position: fixed;
-            top: 32px;
-            left: 24px;
+            top: 26.67px; /* 32px / 1.2 */
+            left: 20px;   /* 24px / 1.2 */
             color: white;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            font-size: 24px;
+            font-size: 20px; /* 24px / 1.2 */
             font-weight: 600;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            text-shadow: 0 1.67px 3.33px rgba(0,0,0,0.5); /* 2px/1.2, 4px/1.2 */
             z-index: 100;
         }
     </style>
@@ -52,7 +53,6 @@
 <body>
     <div class="video-container">
         <video id="myVideo" autoplay muted playsinline loop>
-            <!-- Replace with your vertical video source -->
             <source src="Camera-roll.mp4" type="video/mp4">
         </video>
     </div>
@@ -74,17 +74,20 @@
         // Update every second
         setInterval(updateTime, 1000);
 
-        // iOS video play fix
-        document.addEventListener('touchstart', function() {
-            document.getElementById('myVideo').play();
-        }, false);
+        // iOS video play fix with zoom consideration
+        document.addEventListener('DOMContentLoaded', function() {
+            const video = document.getElementById('myVideo');
+            video.style.transform = `scale(${window.devicePixelRatio})`;
+            video.play();
+        });
     </script>
 </body>
 </html>
 
 
 
-        
+
+
 
 
 
