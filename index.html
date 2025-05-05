@@ -57,4 +57,88 @@
             left: 50%;
             transform: translateX(-50%);
             color: white;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-size: 17.5px; /* 14px desired size / 0.8 scale */
+            font-weight: 600;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            z-index: 200;
+        }
+
+        .time-display {
+            position: absolute;
+            top: 40px;
+            left: 30px;
+            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-size: 30px;
+            font-weight: 600;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            z-index: 100;
+        }
+
+        .date-display {
+            position: absolute;
+            bottom: 40px;
+            left: 30px;
+            color: rgb(93,97,103);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-size: 25px;
+            font-weight: 600;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div class="video-container">
+        <video id="myVideo" autoplay muted playsinline loop>
+            <source src="Camera-roll.mp4" type="video/mp4">
+        </video>
+        <div class="top-bar">
+            <img src="Topbar.jpg" alt="Top bar">
+            <div class="top-time" id="top-time"></div>
+        </div>
+        <div class="time-display" id="time"></div>
+        <div class="date-display" id="date"></div>
+    </div>
+
+    <script>
+        function updateTime() {
+            const now = new Date();
+            // Main time display
+            const timeString = now.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            document.getElementById('time').textContent = timeString;
+            
+            // Top bar 24-hour time
+            const topTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            document.getElementById('top-time').textContent = topTime;
+        }
+
+        function setFutureDate() {
+            const now = new Date();
+            const future = new Date(now.getTime() + (28 * 60 * 1000));
+            
+            document.getElementById('date').textContent = 
+                `${future.getDate()} ` +
+                `${future.toLocaleString('default', { month: 'long' })} ` +
+                `${future.getFullYear()}, ` +
+                `${String(future.getHours()).padStart(2, '0')}:` +
+                `${String(future.getMinutes()).padStart(2, '0')}`;
+        }
+
+        // Initialize displays
+        updateTime();
+        setFutureDate();
+        setInterval(updateTime, 1000);
+
+        // iOS video play handler
+        document.addEventListener('touchstart', () => {
+            document.getElementById('myVideo').play();
+        });
+    </script>
+</body>
+</html>
