@@ -20,10 +20,10 @@
 
         .video-container {
             position: fixed;
-            width: 375px;
-            height: 667px;
+            width: 375px;  /* 300px * 1.25 (0.8 scale inverse) */
+            height: 667px;  /* 533.6px * 1.25 */
             left: 50%;
-            top: calc(50% + 2px); /* Shifted down 2px */
+            top: calc(50% + 2px);
             transform: translate(-50%, -50%) scale(0.8);
             transform-origin: center;
             overflow: hidden;
@@ -67,13 +67,16 @@
 
         .time-display {
             position: absolute;
-            top: 40px;
-            left: 30px;
+            top: 406.25px; /* 325px (video-space) * 1.25 scaling factor */
+            left: 50%;
+            transform: translateX(-50%);
             color: black;
             font-family: Arial, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            font-size: 30px;
+            font-size: 32.5px; /* 26px * 1.25 */
             font-weight: 600;
+            line-height: 1;
             text-shadow: 0 0px 0px rgba(0,0,0,0.5);
+            white-space: nowrap;
             z-index: 100;
         }
 
