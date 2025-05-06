@@ -125,6 +125,10 @@
             const future = new Date(now.getTime() + (28 * 60 * 1000));
             
             document.getElementById('date').textContent = 
+              
+                
+                element.textContent = "I have changed! "
+                
                 `${future.getDate()} ` +
                 `${future.toLocaleString('default', { month: 'long' })} ` +
                 `${future.getFullYear()}, ` +
