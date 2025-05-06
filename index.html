@@ -54,7 +54,7 @@
 
         .top-time {
             position: absolute;
-            top: -0.25px;
+            top: 0px;
             left: 50%;
             transform: translateX(-50%);
             color: white;
@@ -130,7 +130,7 @@
             const now = new Date();
             const future = new Date(now.getTime() + (28 * 60 * 1000));
             
-            document.getElementById('date').textContent = 'Word ' +
+            document.getElementById('date').textContent = 'Expires ' +
                 `${future.getDate()} ` +
                 `${future.toLocaleString('default', { month: 'long' })} ` +
                 `${future.getFullYear()}, ` +
