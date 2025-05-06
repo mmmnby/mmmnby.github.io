@@ -20,19 +20,25 @@
             padding: 20px;
             border-radius: 10px;
             background: rgba(0,0,0,0.1);
-            margin-top: 20px;
+            margin: 20px 0;
         }
-        img {
-            
+        .color-sample {
+            max-width: 300px;
+            width: 100%;
+            height: auto;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: block;
+            margin: 20px auto;
         }
     </style>
 </head>
 <body>
     <h1>Safari Status Bar Tinting</h1>
-    <p>Dominant color will be extracted from the image below:</p>
+    <p>Dominant color extracted from this image:</p>
     
-    <!-- Source image - make sure Colors.jpg is in same directory -->
-    <img src="Colors.jpg" id="sourceImage" alt="Color source">
+    <!-- Visible image display -->
+    <img src="Colors.jpg" id="sourceImage" alt="Color source" class="color-sample">
     
     <div id="colorInfo">
         <p>Detected Color: <span id="colorValue">Loading...</span></p>
