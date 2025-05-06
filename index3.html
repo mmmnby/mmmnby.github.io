@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Safari specific meta tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- Theme color meta (will be updated by JavaScript) -->
+    <meta name="theme-color" content="#ffffff">
+    <title>Safari Status Bar Tinting</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            font-family: -apple-system, sans-serif;
+        }
+        #colorInfo {
+            padding: 20px;
+            border-radius: 10px;
+            background: rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        img {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Safari Status Bar Tinting</h1>
+    <p>Dominant color will be extracted from the image below:</p>
+    
+    <!-- Source image - make sure Colors.jpg is in same directory -->
+    <img src="Colors.jpg" id="sourceImage" alt="Color source">
+    
+    <div id="colorInfo">
+        <p>Detected Color: <span id="colorValue">Loading...</span></p>
+    </div>
+
+    <script>
+        function getDominantColor(image) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Set canvas dimensions to image dimensions
+            canvas.width = image.width;
+            canvas.height = image.height;
+            
+            // Draw image to canvas
+            ctx.drawImage(image, 0, 0);
+            
+            // Get image data
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            // Simple color averaging algorithm
+            let r = 0, g = 0, b = 0;
+            const sampleSize = 1000; // Number of pixels to sample
+            
+            for (let i = 0; i < sampleSize; i++) {
+                const offset = i * 4;
+                r += data[offset];
+                g += data[offset + 1];
+                b += data[offset + 2];
+            }
+            
+            // Calculate average color
+            r = Math.floor(r / sampleSize);
+            g = Math.floor(g / sampleSize);
+            b = Math.floor(b / sampleSize);
+            
+            return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+        }
+
+        // Wait for image to load
+        window.addEventListener('load', () => {
+            const image = document.getElementById('sourceImage');
+            
+            image.onload = function() {
+                const color = getDominantColor(image);
+                
+                // Update meta tags
+                document.querySelector('meta[name="theme-color"]').content = color;
+                
+                // Update display
+                document.getElementById('colorValue').textContent = color;
+                document.body.style.backgroundColor = color + '22'; // Add alpha for background
+            }
+            
+            // Handle case where image might already be cached
+            if (image.complete) {
+                image.onload();
+            }
+        });
+    </script>
+</body>
+</html>
