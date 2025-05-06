@@ -20,8 +20,8 @@
 
         .video-container {
             position: fixed;
-            width: 375px;  /* 300px * 1.25 (0.8 scale inverse) */
-            height: 667px;  /* 533.6px * 1.25 */
+            width: 375px;
+            height: 667px;
             left: 50%;
             top: calc(50% + 2px);
             transform: translate(-50%, -50%) scale(0.8);
@@ -67,12 +67,12 @@
 
         .time-display {
             position: absolute;
-            top: 399.5px; /* 325px (video-space) * 1.25 scaling factor */
+            top: 399.5px;
             left: 50%;
             transform: translateX(-50%);
             color: #36383C;
             font-family: Arial, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            font-size: 43px; /* 26px * 1.25 */
+            font-size: 43px;
             font-weight: 600;
             line-height: 1;
             text-shadow: 0 0px 0px rgba(0,0,0,0.5);
@@ -109,13 +109,15 @@
     <script>
         function updateTime() {
             const now = new Date();
+            // Main time display with 12-hour format and single digit hours
             const timeString = now.toLocaleTimeString('en-US', {
-                hour: '2-digit',
+                hour: 'numeric',  // Changed to numeric for single/double digits
                 minute: '2-digit',
                 second: '2-digit'
             });
             document.getElementById('time').textContent = timeString;
             
+            // Top bar remains 24-hour format
             const topTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
             document.getElementById('top-time').textContent = topTime;
         }
@@ -124,11 +126,8 @@
             const now = new Date();
             const future = new Date(now.getTime() + (28 * 60 * 1000));
             
-            document.getElementById('date').textContent = 
-              
-                
-                
-                
+            // Added "word " prefix to date display
+            document.getElementById('date').textContent = 'Word ' +
                 `${future.getDate()} ` +
                 `${future.toLocaleString('default', { month: 'long' })} ` +
                 `${future.getFullYear()}, ` +
@@ -146,3 +145,6 @@
     </script>
 </body>
 </html>
+
+
+!
