@@ -82,8 +82,8 @@
         ctx.beginPath();
         ctx.moveTo(outerR * Math.cos(angle), outerR * Math.sin(angle));
         ctx.lineTo(innerR * Math.cos(angle), innerR * Math.sin(angle));
-        ctx.lineWidth   = isHour ? Math.max(3, W*0.0) : Math.max(1, W*0.004);
-        ctx.strokeStyle = isHour ? 'black' : '#000';
+        ctx.lineWidth   = isHour ? Math.max(3, W*0.01) : Math.max(1, W*0.004);
+        ctx.strokeStyle = isHour ? 'lack' : '#000';
         ctx.stroke();
       }
     }
@@ -113,7 +113,7 @@
             frac = (h + m/60) / 24,
             angle = frac * 2*Math.PI + 2*Math.PI/2,
             len   = R - (R * 0.10) + 2,  // tip near major ticks
-            w     = Math.max(6, R * 0.05);
+            w     = Math.max(10, R * 0.05);
 
       ctx.save();
       ctx.rotate(angle);
