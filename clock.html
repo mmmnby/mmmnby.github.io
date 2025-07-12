@@ -113,7 +113,7 @@
             h    = (now.getHours() + hourOffset + 24) % 24,
             m    = now.getMinutes(),
             frac = (h + m/60) / 24,
-            angle = frac * 2*Math.PI + 1*Math.PI/2,
+            angle = frac * 2*Math.PI + 2*Math.PI/2,
             // tip near major ticks
             len   = R - (R * 0.10) + 2,
             // thicker at base
