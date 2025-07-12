@@ -82,7 +82,7 @@
         ctx.beginPath();
         ctx.moveTo(outerR * Math.cos(angle), outerR * Math.sin(angle));
         ctx.lineTo(innerR * Math.cos(angle), innerR * Math.sin(angle));
-        ctx.lineWidth   = isHour ? Math.max(3, W*0.01) : Math.max(1, W*0.004);
+        ctx.lineWidth   = isHour ? Math.max(3, W*0.0) : Math.max(1, W*0.004);
         ctx.strokeStyle = isHour ? 'black' : '#000';
         ctx.stroke();
       }
