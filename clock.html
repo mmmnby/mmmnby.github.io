@@ -63,6 +63,14 @@
             midLen   = R * 0.066,
             minorLen = R * 0.033;
 
+      // Fill bottom half with darker gray
+ctx.beginPath();
+ctx.moveTo(0, 0);
+ctx.arc(0, 0, R, Math.PI, 2 * Math.PI); // from 180° to 360°
+ctx.closePath();
+ctx.fillStyle = '#ccc'; // darker gray
+ctx.fill();
+      
       // Outer circle
       ctx.beginPath();
       ctx.arc(0, 0, R, 0, 2*Math.PI);
