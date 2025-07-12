@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>24-Hour Clock (0–23)</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f0f0f0;
+    }
+    canvas {
+      width: 500px;
+      height: 500px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="clock" width="500" height="500"></canvas>
+  <script>
+    const c = document.getElementById('clock'),
+          ctx = c.getContext('2d'),
+          R = c.width / 2;
+    ctx.translate(R, R);
+
+    function drawClock() {
+      ctx.clearRect(-R, -R, c.width, c.height);
+      drawFace();
+      drawNumbers();
+      drawHourHand();
+    }
+
+    function drawFace() {
+      ctx.beginPath();
+      ctx.arc(0, 0, R - 5, 0, 2 * Math.PI);
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#000';
+      ctx.stroke();
+
+      for (let i = 0; i < 96; i++) {
+        const angle = (i * Math.PI / 48) + Math.PI/2;
+        const isHour = i % 4 === 0;
+        const isHalf = i % 2 === 0;
+        const len = isHour ? 15 : isHalf ? 10 : 5;
+
+        ctx.beginPath();
+        const x1 = (R - 5) * Math.cos(angle),
+              y1 = (R - 5) * Math.sin(angle),
+              x2 = (R - 5 - len) * Math.cos(angle),
+              y2 = (R - 5 - len) * Math.sin(angle);
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.lineWidth = isHour ? 3 : 1;
+        ctx.strokeStyle = '#000';
+        ctx.stroke();
+      }
+    }
+
+    function drawNumbers() {
+      ctx.font = "16px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      // labels 0 through 23
+      for (let num = 0; num < 24; num++) {
+        const ang = (num / 24) * 2 * Math.PI + Math.PI/2;
+        const x = (R - 30) * Math.cos(ang);
+        const y = (R - 30) * Math.sin(ang);
+        ctx.fillText(num, x, y);
+      }
+    }
+
+    function drawHourHand() {
+      const now = new Date(),
+            h = now.getHours(),
+            m = now.getMinutes();
+      const angle = ((h + m/60) / 24) * 2 * Math.PI + Math.PI/2;
+      const len = R * 0.5,
+            w = 8;
+
+      ctx.save();
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(-w/2, 0);
+      ctx.lineTo(0, -len);
+      ctx.lineTo(w/2, 0);
+      ctx.closePath();
+      ctx.fillStyle = '#000';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    setInterval(drawClock, 1000);
+    drawClock();
+  </script>
+</body>
+</html>
