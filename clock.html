@@ -7,8 +7,7 @@
   <title>Responsive 24-Hour Clock</title>
   <style>
     html, body {
-      margin: 0;
-      padding: 0;
+      margin: 0; padding: 0;
       height: 100%;
       background: #f0f0f0;
       display: flex;
@@ -17,9 +16,7 @@
       justify-content: center;
       font-family: sans-serif;
     }
-    canvas {
-      display: block;
-    }
+    canvas { display: block; }
     #digital {
       margin-top: 0.5em;
       font-size: 1em;
@@ -36,7 +33,6 @@
           ctx       = canvas.getContext('2d'),
           digitalEl = document.getElementById('digital');
 
-    // handle resize / orientation
     function resize() {
       const W = window.innerWidth;
       canvas.width  = W;
@@ -44,13 +40,13 @@
       drawClock();
       updateDigital();
     }
-    window.addEventListener('resize',  resize);
+    window.addEventListener('resize', resize);
     window.addEventListener('orientationchange', resize);
 
     function drawClock() {
       const W = canvas.width,
             C = W / 2,
-            R = C * 0.85;  // leave a bit of padding for numbers
+            R = C * 0.85;  // padding for numbers
 
       ctx.setTransform(1,0,0,1,0,0);
       ctx.clearRect(0, 0, W, W);
@@ -66,16 +62,16 @@
             midLen   = R * 0.066,
             minorLen = R * 0.033;
 
-      // outer circle
+      // Outer circle
       ctx.beginPath();
-      ctx.arc(0, 0, R, 0, 2 * Math.PI);
+      ctx.arc(0, 0, R, 0, 2*Math.PI);
       ctx.lineWidth   = Math.max(2, W * 0.008);
       ctx.strokeStyle = '#000';
       ctx.stroke();
 
-      // 96 ticks
+      // 96 ticks, offset so 0 at bottom, 12 at top
       for (let i = 0; i < 96; i++) {
-        const angle  = (i * 2 * Math.PI / 96) - Math.PI/2,
+        const angle  = i * 2*Math.PI/96 + 3*Math.PI/2,
               isHour = i % 4 === 0,
               isHalf = i % 2 === 0,
               len    = isHour ? majorLen : isHalf ? midLen : minorLen,
@@ -85,7 +81,7 @@
         ctx.beginPath();
         ctx.moveTo(outerR * Math.cos(angle), outerR * Math.sin(angle));
         ctx.lineTo(innerR * Math.cos(angle), innerR * Math.sin(angle));
-        ctx.lineWidth   = isHour ? Math.max(3, W * 0.01) : Math.max(1, W * 0.004);
+        ctx.lineWidth   = isHour ? Math.max(3, W*0.01) : Math.max(1, W*0.004);
         ctx.strokeStyle = isHour ? 'red' : '#000';
         ctx.stroke();
       }
@@ -100,7 +96,7 @@
       const numR = R * 1.15;
 
       for (let num = 0; num < 24; num++) {
-        const angle = (num / 24) * 2 * Math.PI - Math.PI/2,
+        const angle = num * 2*Math.PI/24 + 3*Math.PI/2,
               x     = numR * Math.cos(angle),
               y     = numR * Math.sin(angle);
         ctx.fillStyle = '#000';
@@ -112,11 +108,13 @@
       const now   = new Date(),
             h     = now.getHours(),
             m     = now.getMinutes(),
-            s     = now.getSeconds(),
-            frac  = (h + m/60 + s/3600) / 24,
-            angle = frac * 2 * Math.PI - Math.PI/2,
-            len   = R * 0.85,
-            w     = Math.max(4, R * 0.03);
+            // fraction of full circle
+            frac  = (h + m/60) / 24,
+            angle = frac * 2*Math.PI + 3*Math.PI/2,
+            // extend almost to the base of the major ticks
+            len   = R - (R * 0.10) + 2,  
+            // slightly thicker
+            w     = Math.max(6, R * 0.05);
 
       ctx.save();
       ctx.rotate(angle);
@@ -131,7 +129,7 @@
     }
 
     function updateDigital() {
-      const now = new Date(),
+      const now  = new Date(),
             opts = {
               hour:   '2-digit',
               minute: '2-digit',
@@ -141,12 +139,12 @@
       digitalEl.textContent = new Intl.DateTimeFormat(undefined, opts).format(now);
     }
 
-    // initial draw + updates
+    // Initial draw + minute‐based updates
     resize();
     setInterval(() => {
       drawClock();
       updateDigital();
-    }, 1000);
+    }, 60*1000);
   </script>
 </body>
 </html>
