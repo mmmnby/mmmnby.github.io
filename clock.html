@@ -83,7 +83,7 @@
         ctx.moveTo(outerR * Math.cos(angle), outerR * Math.sin(angle));
         ctx.lineTo(innerR * Math.cos(angle), innerR * Math.sin(angle));
         ctx.lineWidth   = isHour ? Math.max(3, W*0.01) : Math.max(1, W*0.004);
-        ctx.strokeStyle = isHour ? 'red' : '#000';
+        ctx.strokeStyle = isHour ? 'black' : '#000';
         ctx.stroke();
       }
     }
@@ -99,7 +99,7 @@
       const numR = R * 1.10;
 
       for (let num = 0; num < 24; num++) {
-        const angle = num * 2*Math.PI/24 + 3*Math.PI/2,
+        const angle = num * 2*Math.PI/24 + 1*Math.PI/2,
               x     = numR * Math.cos(angle),
               y     = numR * Math.sin(angle);
         ctx.fillStyle = '#000';
@@ -113,7 +113,7 @@
             h    = (now.getHours() + hourOffset + 24) % 24,
             m    = now.getMinutes(),
             frac = (h + m/60) / 24,
-            angle = frac * 2*Math.PI + 3*Math.PI/2,
+            angle = frac * 2*Math.PI + 1*Math.PI/2,
             // tip near major ticks
             len   = R - (R * 0.10) + 2,
             // thicker at base
