@@ -33,21 +33,21 @@
       touch-action: manipulation;
     }
 
-      /* ─── Slider container (the “wide rectangle”) ─── */
-/* slider track under the time displays */
-#slider {
-  width: 90vw;
-  max-width: 500px;
-  height: 2em;
-  margin: 0.5em auto;
-  background: #ddd;
-  border-radius: 0.25em;
-  touch-action: none;
-  user-select: none;
-}
-#slider:active {
-  background: #ccc;
-}
+    /* ─── Slider container (the “wide rectangle”) ─── */
+    /* slider track under the time displays */
+    #slider {
+      width: 90vw;
+      max-width: 500px;
+      height: 2em;
+      margin: 0.5em auto;
+      background: #ddd;
+      border-radius: 0.25em;
+      touch-action: none;
+      user-select: none;
+    }
+    #slider:active {
+      background: #ccc;
+    }
     
   </style>
 </head>
@@ -87,7 +87,7 @@
       { city: 'New York',      offset:  -5 },
       { city: 'Santiago',      offset:  -4 },
       { city: 'Buenos Aires',  offset:  -3 },
-      { city: 'Ponta Del', offset:  -2 },
+      { city: 'Ponta Del',     offset:  -2 },
       { city: 'Azores',        offset:  -1 },
       { city: 'London',        offset:   0 },
       { city: 'Berlin',        offset:  +1 },
@@ -173,8 +173,6 @@
       }
     }
 
-    
-
     function drawNumbers(R) {
       const fontSize = Math.max(10, R * 0.08);
       ctx.font         = `${fontSize}px sans-serif`;
@@ -205,7 +203,6 @@
         ctx.fillText(local, x2, y2);
       }
     }
-
 
     function drawHourHand(R) {
       const now   = new Date(),
@@ -262,15 +259,15 @@
     }
 
     function updateLocal() {
-      const nowUtc   = Date.now(),
-            offHours = zones[zoneIndex].offset,
-            localMs  = nowUtc + offHours * 3600e3,
-            d        = new Date(localMs),
-            hh       = String(d.getUTCHours()).padStart(2,'0'),
-            mm       = String(d.getMinutes()).padStart(2,'0'),
-            ss       = String(d.getSeconds()).padStart(2,'0'),
-            city     = zones[zoneIndex].city,
-            offStr   = fmtOffset(offHours);
+      const nowUtc      = Date.now(),
+            offsetHours = zones[zoneIndex].offset,
+            localMs     = nowUtc + offsetHours * 3600e3,
+            d           = new Date(localMs),
+            hh          = String(d.getUTCHours()).padStart(2,'0'),
+            mm          = String(d.getMinutes()).padStart(2,'0'),
+            ss          = String(d.getSeconds()).padStart(2,'0'),
+            city        = zones[zoneIndex].city,
+            offStr      = fmtOffset(offsetHours);
 
       localEl.textContent = `${hh}:${mm}:${ss} ${city} (${offStr})`;
     }
@@ -294,32 +291,32 @@
       updateLocal();
     }, 1000);
 
+    // Slider section
+    const slider   = document.getElementById('slider'),
+          screenW  = window.innerWidth,
+          stepPx   = screenW / 7;   // ≈7 zone-steps per full swipe
 
+    let startX, startZone;
+
+    slider.addEventListener('touchstart', e => {
+      e.preventDefault();
+      startX     = e.touches[0].clientX;
+      startZone  = zoneIndex;
+    });
+
+    slider.addEventListener('touchmove', e => {
+      e.preventDefault();
+      const dx     = e.touches[0].clientX - startX,
+            delta  = Math.round(dx / stepPx),
+            newZI  = ((startZone + delta) % zones.length + zones.length) % zones.length;
+
+      if (newZI !== zoneIndex) {
+        zoneIndex = newZI;
+        updateLocal();
+        drawClock();
+      }
+    });
     
-const slider   = document.getElementById('slider'),
-      screenW  = window.innerWidth,
-      stepPx   = screenW / 7;   // ≈7 zone-steps per full swipe
-
-let startX, startZone;
-
-slider.addEventListener('touchstart', e => {
-  e.preventDefault();
-  startX     = e.touches[0].clientX;
-  startZone  = zoneIndex;
-});
-
-slider.addEventListener('touchmove', e => {
-  e.preventDefault();
-  const dx     = e.touches[0].clientX - startX,
-        delta  = Math.round(dx / stepPx),
-        newZI  = ((startZone + delta) % zones.length + zones.length) % zones.length;
-
-  if (newZI !== zoneIndex) {
-    zoneIndex = newZI;
-    updateLocal();
-    drawClock();
-  }
-});
   </script>
 </body>
 </html>
