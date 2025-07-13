@@ -65,7 +65,7 @@
   <canvas id="clock"></canvas>
 
   <!-- UTC digital readout -->
-  <div id="digital">--:--:-- GMT</div>
+  <div id="digital">--:--:-- UTC</div>
 
   <!-- Local time with prev/next zone buttons -->
   <div id="local-container">
@@ -193,7 +193,7 @@
             h      = now.getUTCHours(),
             m      = now.getUTCMinutes(),
             fraction = (h + m/60) / 24,
-            start   = fraction * 2*Math.PI + 1.5*Math.PI;
+            start   = fraction * 2*Math.PI + 1*Math.PI;
 
       ctx.beginPath();
       ctx.moveTo(0,0);
@@ -266,7 +266,7 @@
             h      = now.getUTCHours(),
             m      = now.getUTCMinutes(),
             fraction = (h + m/60) / 24,
-            angle   = fraction * 2*Math.PI + 1.5*Math.PI,
+            angle   = fraction * 2*Math.PI + 1*Math.PI,
             length  = R - (R * 0.10) + 2,
             width   = Math.max(14, R * 0.07);
 
