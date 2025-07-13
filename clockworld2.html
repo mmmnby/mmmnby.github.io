@@ -236,7 +236,7 @@
   const fractionOfDay = (hour + minute / 60) / 24;
 
   // Zero at top (12), full circle over 24h
-  const angle = fractionOfDay * 2 * Math.PI - (Math.PI / 2);
+  const angle = fractionOfDay * 2 * Math.PI - (Math.PI);
 
   const handLength    = radius - (radius * 0.10) + 2;
   const handHalfWidth = Math.max(14, radius * 0.07);
