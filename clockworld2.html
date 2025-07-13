@@ -263,16 +263,16 @@
 
     function updateLocal() {
       const nowUtc   = Date.now(),
-            offHours = zones[zoneIndex].offset,
+            offsetHours = zones[zoneIndex].offset,
             localMs  = nowUtc + offHours * 3600e3,
             d        = new Date(localMs),
             hh       = String(d.getUTCHours()).padStart(2,'0'),
             mm       = String(d.getMinutes()).padStart(2,'0'),
             ss       = String(d.getSeconds()).padStart(2,'0'),
             city     = zones[zoneIndex].city,
-            offStr   = fmtOffset(offHours);
+            offsetStr   = fmtOffset(offsetHours);
 
-      localEl.textContent = `${hh}:${mm}:${ss} ${city} (${offStr})`;
+      localEl.textContent = `${hh}:${mm}:${ss} ${city} (${offsetStr})`;
     }
 
     btnPlus.addEventListener('click', () => {
