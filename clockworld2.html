@@ -17,10 +17,15 @@
       font-family: sans-serif;
     }
     canvas { display: block; }
-    #digital {
+    #digital, #local-container {
       margin-top: 0.5em;
       font-size: 1em;
       text-align: center;
+    }
+    #local-container button {
+      font-size: 1em;
+      padding: 0.2em 0.6em;
+      margin: 0 0.5em;
     }
   </style>
 </head>
@@ -28,27 +33,57 @@
   <canvas id="clock"></canvas>
   <div id="digital"></div>
 
-  <!-- NEW: local time display with left/right arrows -->
-  <div id="local-container" style="margin-top:0.5em; font-size:1em; text-align:center;">
+  <!-- Local time display with arrows -->
+  <div id="local-container">
     <button id="tz-minus">←</button>
     <span id="local-time"></span>
     <button id="tz-plus">→</button>
   </div>
 
   <script>
-    const mapImg      = new Image();
-    mapImg.src        = 'worldmap.jpg';
-    mapImg.onload     = resize;
+    const mapImg  = new Image();
+    mapImg.src    = 'worldmap.jpg';
+    mapImg.onload = resize;
 
-    const canvas      = document.getElementById('clock'),
-          ctx         = canvas.getContext('2d'),
-          digitalEl   = document.getElementById('digital'),
-          localEl     = document.getElementById('local-time'),
-          btnPlus     = document.getElementById('tz-plus'),
-          btnMinus    = document.getElementById('tz-minus');
+    const canvas    = document.getElementById('clock'),
+          ctx       = canvas.getContext('2d'),
+          digitalEl = document.getElementById('digital'),
+          localEl   = document.getElementById('local-time'),
+          btnPlus   = document.getElementById('tz-plus'),
+          btnMinus  = document.getElementById('tz-minus');
 
-    let hourOffset  = 0;   // used for the rotating overlay/hour hand (UTC + hourOffset)
-    let localOffset = -new Date().getTimezoneOffset() / 60;  // initial local time zone offset
+    // Array of 24 major cities covering UTC-11…+12
+    const zones = [
+      { city: 'Pago Pago',     offset: -11 },
+      { city: 'Honolulu',      offset: -10 },
+      { city: 'Anchorage',     offset:  -9 },
+      { city: 'Los Angeles',   offset:  -8 },
+      { city: 'Denver',        offset:  -7 },
+      { city: 'Mexico City',   offset:  -6 },
+      { city: 'New York',      offset:  -5 },
+      { city: 'Santiago',      offset:  -4 },
+      { city: 'Buenos Aires',  offset:  -3 },
+      { city: 'Ponta Delgada', offset:  -2 },
+      { city: 'Azores',        offset:  -1 },
+      { city: 'London',        offset:   0 },
+      { city: 'Berlin',        offset:  +1 },
+      { city: 'Cairo',         offset:  +2 },
+      { city: 'Moscow',        offset:  +3 },
+      { city: 'Dubai',         offset:  +4 },
+      { city: 'Karachi',       offset:  +5 },
+      { city: 'Dhaka',         offset:  +6 },
+      { city: 'Bangkok',       offset:  +7 },
+      { city: 'Beijing',       offset:  +8 },
+      { city: 'Tokyo',         offset:  +9 },
+      { city: 'Sydney',        offset: +10 },
+      { city: 'Nouméa',        offset: +11 },
+      { city: 'Auckland',      offset: +12 }
+    ];
+
+    // Find browser's current UTC offset in hours (e.g. -8 for PDT)
+    const browserOffset = -new Date().getTimezoneOffset() / 60;
+    let zoneIndex = zones.findIndex(z => z.offset === browserOffset);
+    if (zoneIndex < 0) zoneIndex = 11;  // default to London if no match
 
     function resize() {
       const W = window.innerWidth;
@@ -62,15 +97,14 @@
     window.addEventListener('orientationchange', resize);
 
     function drawClock() {
-      const W      = canvas.width,
-            C      = W / 2,
-            R      = C * 0.70;
+      const W = canvas.width,
+            C = W / 2,
+            R = C * 0.70;
 
       ctx.setTransform(1,0,0,1,0,0);
       ctx.clearRect(0, 0, W, W);
       ctx.translate(C, C);
 
-      // clip to the smaller circle
       ctx.save();
       ctx.beginPath();
       ctx.arc(0, 0, R, 0, Math.PI*2);
@@ -128,7 +162,7 @@
         const angle = num * 2*Math.PI/24 + Math.PI/2,
               x1    = ring1 * Math.cos(angle),
               y1    = ring1 * Math.sin(angle),
-              local = (num + localOffset + 24) % 24,
+              local = (num + zones[zoneIndex].offset + 24) % 24,
               x2    = ring2 * Math.cos(angle),
               y2    = ring2 * Math.sin(angle);
 
@@ -140,7 +174,7 @@
 
     function drawHourHand(R) {
       const now   = new Date(),
-            h     = (now.getUTCHours() + hourOffset + 24) % 24,
+            h     = (now.getUTCHours() + 0 + 24) % 24,
             m     = now.getUTCMinutes(),
             frac  = (h + m/60) / 24,
             angle = frac * 2*Math.PI + Math.PI/2,
@@ -161,7 +195,7 @@
 
     function drawRotatingOverlay(R) {
       const now        = new Date(),
-            h          = (now.getUTCHours() + hourOffset + 24) % 24,
+            h          = (now.getUTCHours() + 0 + 24) % 24,
             m          = now.getUTCMinutes(),
             frac       = (h + m/60) / 24,
             A          = frac * 2 * Math.PI + Math.PI/2,
@@ -177,7 +211,7 @@
 
     function updateDigital() {
       const now = new Date(),
-            h   = (now.getUTCHours() + hourOffset + 24) % 24,
+            h   = (now.getUTCHours() + 0 + 24) % 24,
             m   = now.getUTCMinutes(),
             s   = now.getUTCSeconds(),
             hh  = String(h).padStart(2,'0'),
@@ -186,34 +220,38 @@
       digitalEl.textContent = `${hh}:${mm}:${ss} GMT`;
     }
 
-    // NEW: update the local-time display
-    function updateLocal() {
-      const now = new Date(),
-            utc = Date.UTC(
-              now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
-              now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds()
-            );
-      // apply localOffset hours
-      const localDate = new Date(utc + localOffset * 3600 * 1000),
-            lh = String(localDate.getHours()).padStart(2,'0'),
-            lm = String(localDate.getMinutes()).padStart(2,'0'),
-            ls = String(localDate.getSeconds()).padStart(2,'0');
-      localEl.textContent = `${lh}:${lm}:${ls}`;
+    function fmtOffset(n) {
+      const sign = n >= 0 ? '+' : '−',
+            absO = Math.abs(n);
+      return `UTC${sign}${absO}`;
     }
 
-    // BUTTON HANDLERS: shift localOffset by ±1h
+    function updateLocal() {
+      const nowUtc   = Date.now(),
+            offHours = zones[zoneIndex].offset,
+            localMs  = nowUtc + offHours * 3600e3,
+            d        = new Date(localMs),
+            hh       = String(d.getUTCHours()).padStart(2,'0'),
+            mm       = String(d.getMinutes()).padStart(2,'0'),
+            ss       = String(d.getSeconds()).padStart(2,'0'),
+            city     = zones[zoneIndex].city,
+            offStr   = fmtOffset(offHours);
+
+      localEl.textContent = `${hh}:${mm}:${ss} ${city} (${offStr})`;
+    }
+
     btnPlus.addEventListener('click', () => {
-      localOffset = (localOffset + 1 + 24) % 24;
-      drawClock();
+      zoneIndex = (zoneIndex + 1) % zones.length;
       updateLocal();
+      drawClock();
     });
     btnMinus.addEventListener('click', () => {
-      localOffset = (localOffset - 1 + 24) % 24;
-      drawClock();
+      zoneIndex = (zoneIndex - 1 + zones.length) % zones.length;
       updateLocal();
+      drawClock();
     });
 
-    // start it up
+    // kick things off
     resize();
     setInterval(() => {
       drawClock();
