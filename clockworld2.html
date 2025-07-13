@@ -28,6 +28,13 @@
   <canvas id="clock"></canvas>
   <div id="digital"></div>
 
+  <!-- NEW: local time display with left/right arrows -->
+  <div id="local-container" style="margin-top:0.5em; font-size:1em; text-align:center;">
+    <button id="tz-minus">←</button>
+    <span id="local-time"></span>
+    <button id="tz-plus">→</button>
+  </div>
+
   <script>
     const mapImg      = new Image();
     mapImg.src        = 'worldmap.jpg';
@@ -36,8 +43,12 @@
     const canvas      = document.getElementById('clock'),
           ctx         = canvas.getContext('2d'),
           digitalEl   = document.getElementById('digital'),
-          hourOffset  = 0,
-          localOffset = -new Date().getTimezoneOffset() / 60;
+          localEl     = document.getElementById('local-time'),
+          btnPlus     = document.getElementById('tz-plus'),
+          btnMinus    = document.getElementById('tz-minus');
+
+    let hourOffset  = 0;   // used for the rotating overlay/hour hand (UTC + hourOffset)
+    let localOffset = -new Date().getTimezoneOffset() / 60;  // initial local time zone offset
 
     function resize() {
       const W = window.innerWidth;
@@ -45,6 +56,7 @@
       canvas.height = W;
       drawClock();
       updateDigital();
+      updateLocal();
     }
     window.addEventListener('resize', resize);
     window.addEventListener('orientationchange', resize);
@@ -52,7 +64,6 @@
     function drawClock() {
       const W      = canvas.width,
             C      = W / 2,
-            // shrink main circle to 70% of half-width so two rings fit
             R      = C * 0.70;
 
       ctx.setTransform(1,0,0,1,0,0);
@@ -81,14 +92,12 @@
             midLen   = R * 0.066,
             minorLen = R * 0.033;
 
-      // main circle outline
       ctx.beginPath();
       ctx.arc(0, 0, R, 0, Math.PI*2);
       ctx.lineWidth   = Math.max(2, W * 0.008);
       ctx.strokeStyle = '#000';
       ctx.stroke();
 
-      // 96 ticks
       for (let i = 0; i < 96; i++) {
         const angle  = i * 2*Math.PI/96 + 3*Math.PI/2,
               isHour = i % 4 === 0,
@@ -107,15 +116,13 @@
     }
 
     function drawNumbers(R) {
-      // restore your original font sizing
       const fontSize = Math.max(10, R * 0.08);
       ctx.font         = `${fontSize}px sans-serif`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
 
-      // place both rings fully outside the circle
-      const ring1 = R * 1.10,   // GMT ring
-            ring2 = R * 1.30;   // Local ring
+      const ring1 = R * 1.10,
+            ring2 = R * 1.30;
 
       for (let num = 0; num < 24; num++) {
         const angle = num * 2*Math.PI/24 + Math.PI/2,
@@ -125,11 +132,8 @@
               x2    = ring2 * Math.cos(angle),
               y2    = ring2 * Math.sin(angle);
 
-        // GMT hour
         ctx.fillStyle = '#000';
         ctx.fillText(num, x1, y1);
-
-        // Local hour
         ctx.fillText(local, x2, y2);
       }
     }
@@ -139,7 +143,7 @@
             h     = (now.getUTCHours() + hourOffset + 24) % 24,
             m     = now.getUTCMinutes(),
             frac  = (h + m/60) / 24,
-            angle = frac * 2*Math.PI + 2*Math.PI/2,
+            angle = frac * 2*Math.PI + Math.PI/2,
             len   = R - (R * 0.10) + 2,
             w     = Math.max(14, R * 0.07);
 
@@ -179,15 +183,42 @@
             hh  = String(h).padStart(2,'0'),
             mm  = String(m).padStart(2,'0'),
             ss  = String(s).padStart(2,'0');
-
       digitalEl.textContent = `${hh}:${mm}:${ss} GMT`;
     }
 
-    // kick it off
+    // NEW: update the local-time display
+    function updateLocal() {
+      const now = new Date(),
+            utc = Date.UTC(
+              now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
+              now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds()
+            );
+      // apply localOffset hours
+      const localDate = new Date(utc + localOffset * 3600 * 1000),
+            lh = String(localDate.getHours()).padStart(2,'0'),
+            lm = String(localDate.getMinutes()).padStart(2,'0'),
+            ls = String(localDate.getSeconds()).padStart(2,'0');
+      localEl.textContent = `${lh}:${lm}:${ls}`;
+    }
+
+    // BUTTON HANDLERS: shift localOffset by ±1h
+    btnPlus.addEventListener('click', () => {
+      localOffset = (localOffset + 1 + 24) % 24;
+      drawClock();
+      updateLocal();
+    });
+    btnMinus.addEventListener('click', () => {
+      localOffset = (localOffset - 1 + 24) % 24;
+      drawClock();
+      updateLocal();
+    });
+
+    // start it up
     resize();
     setInterval(() => {
       drawClock();
       updateDigital();
+      updateLocal();
     }, 1000);
   </script>
 </body>
