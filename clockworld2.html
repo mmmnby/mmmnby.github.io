@@ -230,25 +230,28 @@
 
     // ── Draw a single hand showing UTC time on a 24-hour scale ──
     function drawHourHand(radius) {
-      const nowUtc       = new Date();
-      const hour         = (nowUtc.getUTCHours() + 24) % 24;
-      const minute       = nowUtc.getUTCMinutes();
-      const fractionOfDay= (hour + minute / 60) / 24;
-      const angle        = fractionOfDay * 3 * Math.PI ;
-      const handLength   = radius - (radius * 0.10) + 2;
-      const handHalfWidth= Math.max(14, radius * 0.07);
+  const nowUtc        = new Date();
+  const hour          = nowUtc.getUTCHours();
+  const minute        = nowUtc.getUTCMinutes();
+  const fractionOfDay = (hour + minute / 60) / 24;
 
-      canvasContext.save();
-      canvasContext.rotate(angle);
-      canvasContext.beginPath();
-      canvasContext.moveTo(-handHalfWidth / 2, 0);
-      canvasContext.lineTo(0, -handLength);
-      canvasContext.lineTo(handHalfWidth / 2, 0);
-      canvasContext.closePath();
-      canvasContext.fillStyle = '#000';
-      canvasContext.fill();
-      canvasContext.restore();
-    }
+  // Zero at top (12), full circle over 24h
+  const angle = fractionOfDay * 2 * Math.PI - (Math.PI / 2);
+
+  const handLength    = radius - (radius * 0.10) + 2;
+  const handHalfWidth = Math.max(14, radius * 0.07);
+
+  canvasContext.save();
+  canvasContext.rotate(angle);
+  canvasContext.beginPath();
+    canvasContext.moveTo(-handHalfWidth / 2, 0);
+    canvasContext.lineTo(0, -handLength);
+    canvasContext.lineTo(handHalfWidth / 2, 0);
+  canvasContext.closePath();
+  canvasContext.fillStyle = '#000';
+  canvasContext.fill();
+  canvasContext.restore();
+}
 
     // ── Draw a semi-transparent half-circle for day/night overlay ──
     function drawDayNightOverlay(radius) {
