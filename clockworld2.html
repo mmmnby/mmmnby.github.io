@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport"
         content="width=device-width, initial-scale=1, maximum-scale=1">
-  <title>Responsive 24-Hour Clock with Rotating Overlay</title>
+  <title>Responsive 24-Hour Clock with Double Outer Rings</title>
   <style>
     html, body {
       margin: 0; padding: 0;
@@ -29,19 +29,15 @@
   <div id="digital"></div>
 
   <script>
-    // load the map for our clock-face background
-    const mapImg = new Image();
-    mapImg.src = 'worldmap.jpg';
-    mapImg.onload = resize;  // once it's ready, trigger a draw
+    const mapImg      = new Image();
+    mapImg.src        = 'worldmap.jpg';
+    mapImg.onload     = resize;
 
-    const canvas     = document.getElementById('clock'),
-          ctx        = canvas.getContext('2d'),
-          digitalEl  = document.getElementById('digital'),
-          hourOffset = 0; // <-- offset applied to both hour hand and digital clock
-
-    // compute local time offset in hours relative to UTC
-    // getTimezoneOffset() returns minutes behind UTC, so invert and convert
-    const localOffset = -new Date().getTimezoneOffset() / 60;
+    const canvas      = document.getElementById('clock'),
+          ctx         = canvas.getContext('2d'),
+          digitalEl   = document.getElementById('digital'),
+          hourOffset  = 0,
+          localOffset = -new Date().getTimezoneOffset() / 60;
 
     function resize() {
       const W = window.innerWidth;
@@ -54,31 +50,27 @@
     window.addEventListener('orientationchange', resize);
 
     function drawClock() {
-      const W = canvas.width,
-            C = W / 2,
-            R = C * 0.85;       // outer radius
+      const W      = canvas.width,
+            C      = W / 2,
+            // shrink main circle to 70% of half-width so two rings fit
+            R      = C * 0.70;
 
       ctx.setTransform(1,0,0,1,0,0);
       ctx.clearRect(0, 0, W, W);
       ctx.translate(C, C);
 
-      // ❶ clip to circle
+      // clip to the smaller circle
       ctx.save();
       ctx.beginPath();
-      ctx.arc(0, 0, R, 0, 2 * Math.PI);
+      ctx.arc(0, 0, R, 0, Math.PI*2);
       ctx.clip();
 
-      // ←–– draw the map inside that circle
       if (mapImg.complete) {
-        ctx.drawImage(mapImg, -R, -R, 2 * R, 2 * R);
+        ctx.drawImage(mapImg, -R, -R, 2*R, 2*R);
       }
-
-      // ❷ rotating transparent half-circle behind ticks & numbers
       drawRotatingOverlay(R);
-
       ctx.restore();
 
-      // ❸ draw face, numbers, hand
       drawFace(R, W);
       drawNumbers(R);
       drawHourHand(R);
@@ -89,61 +81,64 @@
             midLen   = R * 0.066,
             minorLen = R * 0.033;
 
-      // Outer circle
+      // main circle outline
       ctx.beginPath();
-      ctx.arc(0, 0, R, 0, 2*Math.PI);
+      ctx.arc(0, 0, R, 0, Math.PI*2);
       ctx.lineWidth   = Math.max(2, W * 0.008);
       ctx.strokeStyle = '#000';
       ctx.stroke();
 
-      // 96 ticks, offset so 0 at bottom, 12 at top
+      // 96 ticks
       for (let i = 0; i < 96; i++) {
         const angle  = i * 2*Math.PI/96 + 3*Math.PI/2,
               isHour = i % 4 === 0,
               isHalf = i % 2 === 0,
               len    = isHour ? majorLen : isHalf ? midLen : minorLen,
-              outerR = R,
-              innerR = R - len;
+              oR     = R,
+              iR     = R - len;
 
         ctx.beginPath();
-        ctx.moveTo(outerR * Math.cos(angle), outerR * Math.sin(angle));
-        ctx.lineTo(innerR * Math.cos(angle), innerR * Math.sin(angle));
+        ctx.moveTo(oR * Math.cos(angle), oR * Math.sin(angle));
+        ctx.lineTo(iR * Math.cos(angle), iR * Math.sin(angle));
         ctx.lineWidth   = isHour ? Math.max(3, W*0.01) : Math.max(1, W*0.004);
-        ctx.strokeStyle = isHour ? 'black' : '#000';
+        ctx.strokeStyle = '#000';
         ctx.stroke();
       }
     }
 
     function drawNumbers(R) {
-      // slightly smaller so two rings fit
-      const fontSize = Math.max(10, R * 0.06);
+      // restore your original font sizing
+      const fontSize = Math.max(10, R * 0.08);
       ctx.font         = `${fontSize}px sans-serif`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
 
-      const numR_UTC   = R * 0.95;   // inner ring (GMT)
-      const numR_Local = R * 1.15;   // outer ring (local)
+      // place both rings fully outside the circle
+      const ring1 = R * 1.10,   // GMT ring
+            ring2 = R * 1.30;   // Local ring
 
       for (let num = 0; num < 24; num++) {
         const angle = num * 2*Math.PI/24 + Math.PI/2,
-              cos   = Math.cos(angle),
-              sin   = Math.sin(angle);
+              x1    = ring1 * Math.cos(angle),
+              y1    = ring1 * Math.sin(angle),
+              local = (num + localOffset + 24) % 24,
+              x2    = ring2 * Math.cos(angle),
+              y2    = ring2 * Math.sin(angle);
 
-        // — GMT numbers
+        // GMT hour
         ctx.fillStyle = '#000';
-        ctx.fillText(num, numR_UTC * cos, numR_UTC * sin);
+        ctx.fillText(num, x1, y1);
 
-        // — local time equivalent
-        const localNum = (num + localOffset + 24) % 24;
-        ctx.fillText(localNum, numR_Local * cos, numR_Local * sin);
+        // Local hour
+        ctx.fillText(local, x2, y2);
       }
     }
 
     function drawHourHand(R) {
-      const now  = new Date(),
-            h    = (now.getUTCHours() + hourOffset + 24) % 24,
-            m    = now.getUTCMinutes(),
-            frac = (h + m/60) / 24,
+      const now   = new Date(),
+            h     = (now.getUTCHours() + hourOffset + 24) % 24,
+            m     = now.getUTCMinutes(),
+            frac  = (h + m/60) / 24,
             angle = frac * 2*Math.PI + Math.PI/2,
             len   = R - (R * 0.10) + 2,
             w     = Math.max(14, R * 0.07);
@@ -161,11 +156,11 @@
     }
 
     function drawRotatingOverlay(R) {
-      const now  = new Date(),
-            h    = (now.getUTCHours() + hourOffset + 24) % 24,
-            m    = now.getUTCMinutes(),
-            frac = (h + m/60) / 24,
-            A    = frac * 2 * Math.PI + Math.PI/2,
+      const now        = new Date(),
+            h          = (now.getUTCHours() + hourOffset + 24) % 24,
+            m          = now.getUTCMinutes(),
+            frac       = (h + m/60) / 24,
+            A          = frac * 2 * Math.PI + Math.PI/2,
             startAngle = A + Math.PI/2;
 
       ctx.beginPath();
@@ -181,15 +176,14 @@
             h   = (now.getUTCHours() + hourOffset + 24) % 24,
             m   = now.getUTCMinutes(),
             s   = now.getUTCSeconds(),
-            hh  = String(h).padStart(2, '0'),
-            mm  = String(m).padStart(2, '0'),
-            ss  = String(s).padStart(2, '0'),
-            tz  = 'GMT';
+            hh  = String(h).padStart(2,'0'),
+            mm  = String(m).padStart(2,'0'),
+            ss  = String(s).padStart(2,'0');
 
-      digitalEl.textContent = `${hh}:${mm}:${ss} ${tz}`;
+      digitalEl.textContent = `${hh}:${mm}:${ss} GMT`;
     }
 
-    // initial draw + update every second
+    // kick it off
     resize();
     setInterval(() => {
       drawClock();
