@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <!-- allow pinch-zoom, disable only double-tap zoom -->
+  <!-- 1) Added user-scalable=no to prevent pinch & double-tap zoom -->
   <meta name="viewport"
-        content="width=device-width, initial-scale=1">
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>Responsive 24-Hour Clock with Double Outer Rings</title>
   <style>
-    /* touch-action: manipulation blocks double-tap zoom but preserves pinch */
+    /* 2) touch-action: manipulation stops double-tap/zoom gestures */
     html, body {
       margin: 0; padding: 0;
       height: 100%;
