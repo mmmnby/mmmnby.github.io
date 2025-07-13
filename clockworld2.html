@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport"
         content="width=device-width, initial-scale=1, maximum-scale=1">
-  <title>Responsive 24-Hour Clock with Double Outer Rings</title>
+  <title>Responsive 24-Hour Clock with Improved Sizing</title>
   <style>
     html, body {
       margin: 0; padding: 0;
@@ -52,17 +52,17 @@
     function drawClock() {
       const W      = canvas.width,
             C      = W / 2,
-            // shrink main circle to 70% of half-width so two rings fit
-            R      = C * 0.70;
+            // bump up from 0.70 → 0.75 so the circle is larger
+            R      = C * 0.75;
 
       ctx.setTransform(1,0,0,1,0,0);
       ctx.clearRect(0, 0, W, W);
       ctx.translate(C, C);
 
-      // clip to the smaller circle
+      // clip to the larger circle
       ctx.save();
       ctx.beginPath();
-      ctx.arc(0, 0, R, 0, Math.PI*2);
+      ctx.arc(0, 0, R, 0, 2*Math.PI);
       ctx.clip();
 
       if (mapImg.complete) {
@@ -83,12 +83,12 @@
 
       // main circle outline
       ctx.beginPath();
-      ctx.arc(0, 0, R, 0, Math.PI*2);
+      ctx.arc(0, 0, R, 0, 2*Math.PI);
       ctx.lineWidth   = Math.max(2, W * 0.008);
       ctx.strokeStyle = '#000';
       ctx.stroke();
 
-      // 96 ticks
+      // 96 ticks (hour ticks use majorLen)
       for (let i = 0; i < 96; i++) {
         const angle  = i * 2*Math.PI/96 + 3*Math.PI/2,
               isHour = i % 4 === 0,
@@ -107,15 +107,15 @@
     }
 
     function drawNumbers(R) {
-      // restore your original font sizing
+      // original font size
       const fontSize = Math.max(10, R * 0.08);
       ctx.font         = `${fontSize}px sans-serif`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
 
-      // place both rings fully outside the circle
-      const ring1 = R * 1.10,   // GMT ring
-            ring2 = R * 1.30;   // Local ring
+      // make inner ring (GMT) noticeably larger, outer ring a bit further out
+      const ring1 = R * 1.15,   // was 1.10 → now 1.15
+            ring2 = R * 1.30;   // was 1.30 → now the same
 
       for (let num = 0; num < 24; num++) {
         const angle = num * 2*Math.PI/24 + Math.PI/2,
@@ -125,29 +125,28 @@
               x2    = ring2 * Math.cos(angle),
               y2    = ring2 * Math.sin(angle);
 
-        // GMT hour
         ctx.fillStyle = '#000';
         ctx.fillText(num, x1, y1);
-
-        // Local hour
         ctx.fillText(local, x2, y2);
       }
     }
 
     function drawHourHand(R) {
-      const now   = new Date(),
-            h     = (now.getUTCHours() + hourOffset + 24) % 24,
-            m     = now.getUTCMinutes(),
-            frac  = (h + m/60) / 24,
-            angle = frac * 2*Math.PI + Math.PI/2,
-            len   = R - (R * 0.10) + 2,
-            w     = Math.max(14, R * 0.07);
+      // match the hour-tick inner radius exactly:
+      const majorLen = R * 0.10,
+            tipLen   = R - majorLen,      // exact inner end of hour ticks
+            now      = new Date(),
+            h        = (now.getUTCHours() + hourOffset + 24) % 24,
+            m        = now.getUTCMinutes(),
+            frac     = (h + m/60) / 24,
+            angle    = frac * 2*Math.PI + Math.PI/2,
+            w        = Math.max(14, R * 0.07);
 
       ctx.save();
       ctx.rotate(angle);
       ctx.beginPath();
       ctx.moveTo(-w/2, 0);
-      ctx.lineTo(0, -len);
+      ctx.lineTo(0, -tipLen);
       ctx.lineTo(w/2, 0);
       ctx.closePath();
       ctx.fillStyle = '#000';
@@ -160,7 +159,7 @@
             h          = (now.getUTCHours() + hourOffset + 24) % 24,
             m          = now.getUTCMinutes(),
             frac       = (h + m/60) / 24,
-            A          = frac * 2 * Math.PI + Math.PI/2,
+            A          = frac * 2*Math.PI + Math.PI/2,
             startAngle = A + Math.PI/2;
 
       ctx.beginPath();
@@ -183,7 +182,7 @@
       digitalEl.textContent = `${hh}:${mm}:${ss} GMT`;
     }
 
-    // kick it off
+    // start
     resize();
     setInterval(() => {
       drawClock();
