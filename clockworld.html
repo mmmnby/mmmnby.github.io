@@ -32,7 +32,7 @@
     const canvas     = document.getElementById('clock'),
           ctx        = canvas.getContext('2d'),
           digitalEl  = document.getElementById('digital'),
-          hourOffset = -1; // <-- offset applied to both hour hand and digital clock
+          hourOffset = 0; // <-- offset applied to both hour hand and digital clock
 
     function resize() {
       const W = window.innerWidth;
@@ -121,7 +121,7 @@
             h    = (now.getUTCHours() + hourOffset + 24) % 24,
             m    = now.getUTCMinutes(),
             frac = (h + m/60) / 24,
-            angle = frac * 2*Math.PI + Math.PI/2,
+            angle = frac * 2*Math.PI + 2*Math.PI/2,
             len   = R - (R * 0.10) + 2,
             w     = Math.max(14, R * 0.07);
 
