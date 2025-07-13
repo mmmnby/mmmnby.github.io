@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport"
         content="width=device-width, initial-scale=1, maximum-scale=1">
-  <title>Responsive 24-Hour Clock</title>
+  <title>Responsive 24-Hour Clock with Rotating Overlay</title>
   <style>
     html, body {
       margin: 0; padding: 0;
@@ -47,12 +47,24 @@
     function drawClock() {
       const W = canvas.width,
             C = W / 2,
-            R = C * 0.85;  // leave padding for numbers
+            R = C * 0.85;
 
       ctx.setTransform(1,0,0,1,0,0);
       ctx.clearRect(0, 0, W, W);
       ctx.translate(C, C);
 
+      // ❶ clip to circle
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(0, 0, R, 0, 2 * Math.PI);
+      ctx.clip();
+
+      // ❷ rotating transparent half-circle behind ticks & numbers
+      drawRotatingOverlay(R);
+
+      ctx.restore();
+
+      // ❸ draw face, numbers, hand
       drawFace(R, W);
       drawNumbers(R);
       drawHourHand(R);
@@ -63,14 +75,6 @@
             midLen   = R * 0.066,
             minorLen = R * 0.033;
 
-      // Fill bottom half with darker gray
-ctx.beginPath();
-ctx.moveTo(0, 0);
-ctx.arc(0, 0, R, 2 * Math.PI, Math.PI); // from 180° to 360°
-ctx.closePath();
-ctx.fillStyle = '#ccc'; // darker gray
-ctx.fill();
-      
       // Outer circle
       ctx.beginPath();
       ctx.arc(0, 0, R, 0, 2*Math.PI);
@@ -97,15 +101,12 @@ ctx.fill();
     }
 
     function drawNumbers(R) {
-      // smaller font to keep all labels in view
       const fontSize = Math.max(10, R * 0.08);
       ctx.font         = `${fontSize}px sans-serif`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
 
-      // pull numbers in slightly
       const numR = R * 1.10;
-
       for (let num = 0; num < 24; num++) {
         const angle = num * 2*Math.PI/24 + 1*Math.PI/2,
               x     = numR * Math.cos(angle),
@@ -116,15 +117,12 @@ ctx.fill();
     }
 
     function drawHourHand(R) {
-      const now = new Date(),
-            // apply offset and wrap in 0–23
-            h    = (now.getHours() + hourOffset + 24) % 24,
-            m    = now.getMinutes(),
+      const now  = new Date(),
+            h    = (now.getUTCHours() + hourOffset + 24) % 24,
+            m    = now.getUTCMinutes(),
             frac = (h + m/60) / 24,
-            angle = frac * 2*Math.PI + 2*Math.PI/2,
-            // tip near major ticks
+            angle = frac * 2*Math.PI + Math.PI/2,
             len   = R - (R * 0.10) + 2,
-            // thicker at base
             w     = Math.max(14, R * 0.07);
 
       ctx.save();
@@ -139,18 +137,33 @@ ctx.fill();
       ctx.restore();
     }
 
+    function drawRotatingOverlay(R) {
+      const now  = new Date(),
+            h    = (now.getUTCHours() + hourOffset + 24) % 24,
+            m    = now.getUTCMinutes(),
+            frac = (h + m/60) / 24,
+            A    = frac * 2 * Math.PI + Math.PI/2,    // hour-hand angle
+            startAngle = A + Math.PI/2;               // ⟂ to hand
+
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, R, startAngle, startAngle + Math.PI);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; // 50% transparent gray
+      ctx.fill();
+    }
+
     function updateDigital() {
       const now = new Date(),
-      // apply same hour offset to UTC time
-      h    = (now.getUTCHours() + hourOffset + 24) % 24,
-      m    = now.getUTCMinutes(),
-      s    = now.getUTCSeconds(),
-      hh   = String(h).padStart(2, '0'),
-      mm   = String(m).padStart(2, '0'),
-      ss   = String(s).padStart(2, '0'),
-      tz   = 'GMT';
+            h   = (now.getUTCHours() + hourOffset + 24) % 24,
+            m   = now.getUTCMinutes(),
+            s   = now.getUTCSeconds(),
+            hh  = String(h).padStart(2, '0'),
+            mm  = String(m).padStart(2, '0'),
+            ss  = String(s).padStart(2, '0'),
+            tz  = 'GMT';
 
-      idigitalEl.textContent = `${hh}:${mm}:${ss} ${tz}`;
+      digitalEl.textContent = `${hh}:${mm}:${ss} ${tz}`;
     }
 
     // initial draw + update every second
