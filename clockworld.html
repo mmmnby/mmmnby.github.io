@@ -29,6 +29,11 @@
   <div id="digital"></div>
 
   <script>
+    // load the map for our clock-face background
+const mapImg = new Image();
+mapImg.src = 'worldmap.jpg';
+mapImg.onload = resize;  // once it's ready, trigger a draw
+  
     const canvas     = document.getElementById('clock'),
           ctx        = canvas.getContext('2d'),
           digitalEl  = document.getElementById('digital'),
@@ -44,31 +49,37 @@
     window.addEventListener('resize', resize);
     window.addEventListener('orientationchange', resize);
 
-    function drawClock() {
-      const W = canvas.width,
-            C = W / 2,
-            R = C * 0.85;
+function drawClock() {
+  const W = canvas.width,
+        C = W / 2,
+        R = C * 0.85;
 
-      ctx.setTransform(1,0,0,1,0,0);
-      ctx.clearRect(0, 0, W, W);
-      ctx.translate(C, C);
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0, 0, W, W);
+  ctx.translate(C, C);
 
-      // ❶ clip to circle
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(0, 0, R, 0, 2 * Math.PI);
-      ctx.clip();
+  // ❶ clip to circle
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(0, 0, R, 0, 2 * Math.PI);
+  ctx.clip();
 
-      // ❷ rotating transparent half-circle behind ticks & numbers
-      drawRotatingOverlay(R);
-
-      ctx.restore();
-
-      // ❸ draw face, numbers, hand
-      drawFace(R, W);
-      drawNumbers(R);
-      drawHourHand(R);
+    // ←–– draw the map inside that circle
+    if (mapImg.complete) {
+      // draw the image so it exactly fills the circle’s bounding box
+      ctx.drawImage(mapImg, -R, -R, 2 * R, 2 * R);
     }
+
+    // ❷ rotating transparent half-circle behind ticks & numbers
+    drawRotatingOverlay(R);
+
+  ctx.restore();
+
+  // ❸ draw face, numbers, hand
+  drawFace(R, W);
+  drawNumbers(R);
+  drawHourHand(R);
+}
 
     function drawFace(R, W) {
       const majorLen = R * 0.10,
