@@ -154,6 +154,8 @@
       }
     }
 
+    
+
     function drawNumbers(R) {
       const fontSize = Math.max(10, R * 0.08);
       ctx.font         = `${fontSize}px sans-serif`;
@@ -171,11 +173,20 @@
               x2    = ring2 * Math.cos(angle),
               y2    = ring2 * Math.sin(angle);
 
+        // Draw inner ring (UTC hour) in black
         ctx.fillStyle = '#000';
         ctx.fillText(num, x1, y1);
+
+        // Draw outer ring (local hour) - make 12 red
+        if (local === 12) {
+          ctx.fillStyle = 'red';
+        } else {
+          ctx.fillStyle = '#000';
+        }
         ctx.fillText(local, x2, y2);
       }
     }
+
 
     function drawHourHand(R) {
       const now   = new Date(),
