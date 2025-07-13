@@ -182,7 +182,7 @@
             h     = (now.getUTCHours() + 0 + 24) % 24,
             m     = now.getUTCMinutes(),
             frac  = (h + m/60) / 24,
-            angle = frac * 2*Math.PI + Math.PI/2,
+            angle = frac * 2*Math.PI + 2*Math.PI/2,
             len   = R - (R * 0.10) + 2,
             w     = Math.max(14, R * 0.07);
 
