@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Responsive 24-Hour Clock</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      height: 100%;
+      background: #f0f0f0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: sans-serif;
+    }
+    canvas { display: block; }
+    #digital {
+      margin-top: 0.5em;
+      font-size: 1em;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="clock"></canvas>
+  <div id="digital"></div>
+
+  <script>
+    const canvas     = document.getElementById('clock'),
+          ctx        = canvas.getContext('2d'),
+          digitalEl  = document.getElementById('digital'),
+          hourOffset = -1; // <-- offset applied to both hour hand and digital clock
+
+    function resize() {
+      const W = window.innerWidth;
+      canvas.width  = W;
+      canvas.height = W;
+      drawClock();
+      updateDigital();
+    }
+    window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', resize);
+
+    function drawClock() {
+      const W = canvas.width,
+            C = W / 2,
+            R = C * 0.85;  // leave padding for numbers
+
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.clearRect(0, 0, W, W);
+      ctx.translate(C, C);
+
+      drawFace(R, W);
+      drawNumbers(R);
+      drawHourHand(R);
+    }
+
+    function drawFace(R, W) {
+      const majorLen = R * 0.10,
+            midLen   = R * 0.066,
+            minorLen = R * 0.033;
+
+      // Fill bottom half with darker gray
+ctx.beginPath();
+ctx.moveTo(0, 0);
+ctx.arc(0, 0, R, 2 * Math.PI, Math.PI); // from 180° to 360°
+ctx.closePath();
+ctx.fillStyle = '#ccc'; // darker gray
+ctx.fill();
+      
+      // Outer circle
+      ctx.beginPath();
+      ctx.arc(0, 0, R, 0, 2*Math.PI);
+      ctx.lineWidth   = Math.max(2, W * 0.008);
+      ctx.strokeStyle = '#000';
+      ctx.stroke();
+
+      // 96 ticks, offset so 0 at bottom, 12 at top
+      for (let i = 0; i < 96; i++) {
+        const angle  = i * 2*Math.PI/96 + 3*Math.PI/2,
+              isHour = i % 4 === 0,
+              isHalf = i % 2 === 0,
+              len    = isHour ? majorLen : isHalf ? midLen : minorLen,
+              outerR = R,
+              innerR = R - len;
+
+        ctx.beginPath();
+        ctx.moveTo(outerR * Math.cos(angle), outerR * Math.sin(angle));
+        ctx.lineTo(innerR * Math.cos(angle), innerR * Math.sin(angle));
+        ctx.lineWidth   = isHour ? Math.max(3, W*0.01) : Math.max(1, W*0.004);
+        ctx.strokeStyle = isHour ? 'black' : '#000';
+        ctx.stroke();
+      }
+    }
+
+    function drawNumbers(R) {
+      // smaller font to keep all labels in view
+      const fontSize = Math.max(10, R * 0.08);
+      ctx.font         = `${fontSize}px sans-serif`;
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+
+      // pull numbers in slightly
+      const numR = R * 1.10;
+
+      for (let num = 0; num < 24; num++) {
+        const angle = num * 2*Math.PI/24 + 1*Math.PI/2,
+              x     = numR * Math.cos(angle),
+              y     = numR * Math.sin(angle);
+        ctx.fillStyle = '#000';
+        ctx.fillText(num, x, y);
+      }
+    }
+
+    function drawHourHand(R) {
+      const now = new Date(),
+            // apply offset and wrap in 0–23
+            h    = (now.getHours() + hourOffset + 24) % 24,
+            m    = now.getMinutes(),
+            frac = (h + m/60) / 24,
+            angle = frac * 2*Math.PI + 2*Math.PI/2,
+            // tip near major ticks
+            len   = R - (R * 0.10) + 2,
+            // thicker at base
+            w     = Math.max(14, R * 0.07);
+
+      ctx.save();
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(-w/2, 0);
+      ctx.lineTo(0, -len);
+      ctx.lineTo(w/2, 0);
+      ctx.closePath();
+      ctx.fillStyle = '#000';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function updateDigital() {
+      const now = new Date(),
+      // apply same hour offset to UTC time
+      h    = (now.getUTCHours() + hourOffset + 24) % 24,
+      m    = now.getUTCMinutes(),
+      s    = now.getUTCSeconds(),
+      hh   = String(h).padStart(2, '0'),
+      mm   = String(m).padStart(2, '0'),
+      ss   = String(s).padStart(2, '0'),
+      tz   = 'GMT';
+
+      idigitalEl.textContent = `${hh}:${mm}:${ss} ${tz}`;
+    }
+
+    // initial draw + update every second
+    resize();
+    setInterval(() => {
+      drawClock();
+      updateDigital();
+    }, 1000);
+  </script>
+</body>
+</html>
