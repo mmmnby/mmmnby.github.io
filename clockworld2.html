@@ -32,6 +32,30 @@
       margin: 0 0.5em;
       touch-action: manipulation;
     }
+
+      /* ─── Slider container (the “wide rectangle”) ─── */
+  #slider-container {
+    width: 90vw;              /* about full width on mobile */
+    max-width: 500px;         /* optional cap on wide screens */
+    height: 2em;              /* match roughly local-time font-height */
+    margin: 0.5em auto;       /* spacing above/below, centered */
+    background: #ddd;         /* visible track */
+    border-radius: 0.25em;
+    touch-action: none;       /* we’ll handle touch events ourselves */
+    user-select: none;
+    position: relative;
+  }
+  /* optional “thumb” indicator */
+  #slider-thumb {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 1em;               /* small draggable handle */
+    background: #888;
+    border-radius: 0.25em;
+    transform: translateX(-50%);
+    pointer-events: none;     /* we only track touches on the container */
+  }
+    
   </style>
 </head>
 <body>
@@ -44,7 +68,10 @@
     <span id="local-time"></span>
     <button id="tz-plus">→</button>
   </div>
-
+  <!-- slider: drag left/right to change zones -->
+  <div id="slider-container">
+    <div id="slider-thumb"></div>
+  </div>
   <script>
     const mapImg  = new Image();
     mapImg.src    = 'worldmap.jpg';
@@ -274,6 +301,46 @@
       updateDigital();
       updateLocal();
     }, 1000);
+
+    // ─── Slider touch handling ───
+const slider     = document.getElementById('slider-container'),
+      sliderThumb= document.getElementById('slider-thumb'),
+      screenW    = window.innerWidth,
+      stepPx     = screenW / 7;     // ≈ 7 zone-steps per full screen width
+
+let dragStartX,   // initial touch X
+    zoneStart;    // zoneIndex at touchstart
+
+slider.addEventListener('touchstart', e => {
+  e.preventDefault();
+  dragStartX  = e.touches[0].clientX;
+  zoneStart   = zoneIndex;
+  // position thumb at exact touch point
+  sliderThumb.style.left = `${e.touches[0].clientX - slider.getBoundingClientRect().left}px`;
+});
+
+slider.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const x     = e.touches[0].clientX,
+        dx    = x - dragStartX,
+        delta = Math.round(dx / stepPx),
+        newZI = ((zoneStart + delta) % zones.length + zones.length) % zones.length;
+
+  if (newZI !== zoneIndex) {
+    zoneIndex = newZI;
+    updateLocal();
+    drawClock();
+  }
+  // move thumb with finger, clamped in container
+  let relX = x - slider.getBoundingClientRect().left;
+  relX = Math.max(0, Math.min(relX, slider.clientWidth));
+  sliderThumb.style.left = `${relX}px`;
+});
+
+slider.addEventListener('touchend', e => {
+  // optional: snap thumb back to center
+  sliderThumb.style.left = '50%';
+});
   </script>
 </body>
 </html>
