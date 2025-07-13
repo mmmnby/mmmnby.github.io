@@ -252,7 +252,7 @@
             hh  = String(h).padStart(2,'0'),
             mm  = String(m).padStart(2,'0'),
             ss  = String(s).padStart(2,'0');
-      digitalEl.textContent = `${hh}:${mm}:${ss} UTC`;
+      digitalEl.textContent = `${hh}:${mm}:${ss} GMT`;
     }
 
     function fmtOffset(n) {
@@ -263,16 +263,16 @@
 
     function updateLocal() {
       const nowUtc   = Date.now(),
-            offsetHours = zones[zoneIndex].offset,
+            offHours = zones[zoneIndex].offset,
             localMs  = nowUtc + offHours * 3600e3,
             d        = new Date(localMs),
             hh       = String(d.getUTCHours()).padStart(2,'0'),
             mm       = String(d.getMinutes()).padStart(2,'0'),
             ss       = String(d.getSeconds()).padStart(2,'0'),
             city     = zones[zoneIndex].city,
-            offsetStr   = fmtOffset(offsetHours);
+            offStr   = fmtOffset(offHours);
 
-      localEl.textContent = `${hh}:${mm}:${ss} ${city} (${offsetStr})`;
+      localEl.textContent = `${hh}:${mm}:${ss} ${city} (${offStr})`;
     }
 
     btnPlus.addEventListener('click', () => {
@@ -295,7 +295,7 @@
     }, 1000);
 
 
-    /* slider track functionality */
+    
 const slider   = document.getElementById('slider'),
       screenW  = window.innerWidth,
       stepPx   = screenW / 7;   // ≈7 zone-steps per full swipe
