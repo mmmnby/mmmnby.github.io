@@ -74,7 +74,8 @@
       // Fill the bottom half with a darker gray
       context.beginPath();
       context.moveTo(0, 0);
-      context.arc(0, 0, radius, Math.PI, 2 * Math.PI);
+      // Draw arc from 0° to 180° (bottom half)
+  context.arc(0, 0, radius, 0, Math.PI);
       context.closePath();
       context.fillStyle = '#ccc';
       context.fill();
