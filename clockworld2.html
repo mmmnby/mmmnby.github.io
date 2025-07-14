@@ -2,12 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <!-- Prevent zooming on mobile -->
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <!-- Prevent users from zooming in or out on mobile devices -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>Responsive 24-Hour Clock with Day/Night Rings</title>
   <style>
-    /* ── Global page styles ── */
+    /* ── Overall page styling ── */
     html, body {
       margin: 0;
       padding: 0;
@@ -21,12 +20,12 @@
       touch-action: manipulation; /* disables double-tap zoom */
     }
 
-    /* Canvas takes full width, square height */
+    /* Style for the canvas (the round clock face) */
     #clockCanvas {
       display: block;
     }
 
-    /* Digital readouts below the canvas */
+    /* Digital clocks below the canvas */
     #digitalClock,
     #localTimeContainer {
       margin-top: 0.5em;
@@ -35,7 +34,7 @@
       touch-action: manipulation;
     }
 
-    /* Buttons for changing time-zones */
+    /* Style for arrow buttons (change time zones) */
     #zoneButtonsContainer button {
       font-size: 1em;
       padding: 0.2em 0.6em;
@@ -43,7 +42,7 @@
       touch-action: manipulation;
     }
 
-    /* ── Slider bar for swiping through time-zones ── */
+    /* Slider bar below the buttons for swiping through time zones */
     #timeZoneSlider {
       width: 90vw;
       max-width: 500px;
@@ -51,44 +50,45 @@
       margin: 0.5em auto;
       background: #ddd;
       border-radius: 0.25em;
-      touch-action: none;     /* capture horizontal drags */
-      user-select: none;      /* disable text selection */
+      touch-action: none;     /* enables custom drag gestures */
+      user-select: none;      /* prevents selecting text during drag */
     }
 
-    /* Darken slider when active */
+    /* Darker color when slider is touched or dragged */
     #timeZoneSlider:active {
       background: #ccc;
     }
   </style>
 </head>
 <body>
-  <!-- Main clock drawing -->
+
+  <!-- Canvas where the 24-hour clock is drawn -->
   <canvas id="clockCanvas"></canvas>
 
-  <!-- UTC digital clock -->
+  <!-- UTC digital time shown as text -->
   <div id="digitalClock"></div>
 
-  <!-- Local time readout -->
+  <!-- Local time of selected time zone shown here -->
   <div id="localTimeContainer">
     <span id="localTimeDisplay"></span>
   </div>
 
-  <!-- Arrow buttons in their own div -->
+  <!-- Buttons for selecting previous or next time zone -->
   <div id="zoneButtonsContainer">
     <button id="decreaseZoneButton">←</button>
     <button id="increaseZoneButton">→</button>
   </div>
 
-  <!-- Slider for touch gestures -->
+  <!-- Bar that responds to swipes for time zone switching -->
   <div id="timeZoneSlider"></div>
 
   <script>
-    // ── Load a world map image to fill clock background ──
+    // ── Load a background image of the world map ──
     const worldMapImage = new Image();
-    worldMapImage.src = 'worldmap.jpg';
-    worldMapImage.onload = onWindowResize;  // draw when map is ready
+    worldMapImage.src = 'worldmap.jpg';  // Image file to use
+    worldMapImage.onload = onWindowResize; // Redraw clock when image is ready
 
-    // ── Grab DOM elements with full, descriptive names ──
+    // ── Grab HTML elements for later use ──
     const clockCanvasElement     = document.getElementById('clockCanvas');
     const canvasContext          = clockCanvasElement.getContext('2d');
     const digitalClockElement    = document.getElementById('digitalClock');
@@ -97,7 +97,7 @@
     const decreaseZoneButton     = document.getElementById('decreaseZoneButton');
     const timeZoneSliderElement  = document.getElementById('timeZoneSlider');
 
-    // ── Define 24 time-zones with a representative city and offset ──
+    // ── Define the 24 main time zones with a city name and UTC offset ──
     const timeZones = [
       { city: 'Pago Pago',  offset: -11 },
       { city: 'Honolulu',   offset: -10 },
@@ -125,67 +125,71 @@
       { city: 'Auckland',   offset: +12 }
     ];
 
-    // ── Determine the browser’s local UTC offset in hours ──
+    // ── Get the user's local time zone offset (in hours) ──
     const browserUtcOffset = -new Date().getTimezoneOffset() / 60;
 
-    // ── Start at the matching zoneIndex or default to London ──
+    // ── Start at the matching zone index, or default to London ──
     let currentZoneIndex = timeZones.findIndex(z => z.offset === browserUtcOffset);
-    if (currentZoneIndex < 0) currentZoneIndex = 11;  // index of London
+    if (currentZoneIndex < 0) currentZoneIndex = 11; // Index for London
 
-    // ── Resize canvas to window width (square) and redraw ──
+    // ── Adjust canvas size based on window size ──
     function onWindowResize() {
       const canvasSize = window.innerWidth;
       clockCanvasElement.width  = canvasSize;
       clockCanvasElement.height = canvasSize;
+
       drawClockFace();
       updateDigitalClock();
       updateLocalTime();
     }
+
+    // ── Redraw canvas whenever window size/orientation changes ──
     window.addEventListener('resize', onWindowResize);
     window.addEventListener('orientationchange', onWindowResize);
 
-    // ── Main draw loop: world map, day/night overlay, dial, numbers, hand ──
+    // ── Main function to draw the entire clock ──
     function drawClockFace() {
       const size   = clockCanvasElement.width;
       const center = size / 2;
       const radius = center * 0.70;
 
-      // Reset transforms & clear
-      canvasContext.setTransform(1, 0, 0, 1, 0, 0);
-      canvasContext.clearRect(0, 0, size, size);
-      canvasContext.translate(center, center);
+      canvasContext.setTransform(1, 0, 0, 1, 0, 0); // Reset canvas
+      canvasContext.clearRect(0, 0, size, size);   // Clear previous drawings
+      canvasContext.translate(center, center);     // Move origin to center
 
-      // Clip to circle and draw the map
+      // Draw the clipped circular world map background
       canvasContext.save();
       canvasContext.beginPath();
-      canvasContext.arc(0, 0, radius, 0, Math.PI * 2);
+      canvasContext.arc(0, 0, radius, 0, Math.PI * 2); // Circular clipping path
       canvasContext.clip();
 
       if (worldMapImage.complete) {
         canvasContext.drawImage(worldMapImage, -radius, -radius, 2 * radius, 2 * radius);
       }
-      drawDayNightOverlay(radius);
-      canvasContext.restore();
 
-      drawClockBorder(radius, size);
-      drawHourNumbers(radius);
-      drawHourHand(radius);
+      drawDayNightOverlay(radius); // Overlay half-circle for night
+
+      canvasContext.restore(); // Stop clipping
+
+      drawClockBorder(radius, size); // Add outer ring and tick marks
+      drawHourNumbers(radius);       // Add 24-hour labels
+      drawHourHand(radius);          // Draw the rotating hand
     }
 
-    // ── Draw the clock’s outer border and tick marks ──
+    // ── Draw outer ring and tick marks ──
     function drawClockBorder(radius, canvasSize) {
-      const majorTick = radius * 0.10;
+      const majorTick = radius * 0.10; // Long ticks (hours)
       const midTick   = radius * 0.066;
       const minorTick = radius * 0.033;
 
-      // Outer circle
+      // Draw main outer ring
       canvasContext.beginPath();
       canvasContext.arc(0, 0, radius, 0, Math.PI * 2);
       canvasContext.lineWidth   = Math.max(2, canvasSize * 0.008);
       canvasContext.strokeStyle = '#000';
       canvasContext.stroke();
 
-      // 96 small ticks: hours, halves, quarters
+      // Draw 96 small ticks (every 15 minutes)
       for (let i = 0; i < 96; i++) {
         const angle  = i * 2 * Math.PI / 96 + (3 * Math.PI / 2);
         const isHour = (i % 4 === 0);
@@ -203,7 +207,7 @@
       }
     }
 
-    // ── Draw the 24-hour numbers: inner ring UTC, outer ring local ──
+    // ── Draw inner ring with UTC and outer ring with local time ──
     function drawHourNumbers(radius) {
       const fontSize = Math.max(10, radius * 0.08);
       canvasContext.font         = `${fontSize}px sans-serif`;
@@ -222,37 +226,38 @@
         const xOuter    = outerRingRad * Math.cos(angle);
         const yOuter    = outerRingRad * Math.sin(angle);
 
-        // UTC hour in black
+        // Draw UTC hour in black
         canvasContext.fillStyle = '#000';
         canvasContext.fillText(utcHour, xInner, yInner);
 
-        // Local hour: highlight 12 in red, 6 and 18 in blue
-if (localHour === 12) {
-  canvasContext.fillStyle = 'red';
-} else if (localHour === 6 || localHour === 18) {
-  canvasContext.fillStyle = 'blue';
-} else {
-  canvasContext.fillStyle = '#000';
-}
-canvasContext.fillText(localHour, xOuter, yOuter);
-      
+        // Color local hour: red for 12, blue for 6 and 18
+        if (localHour === 12) {
+          canvasContext.fillStyle = 'red';
+        } else if (localHour === 6 || localHour === 18) {
+          canvasContext.fillStyle = 'blue';
+        } else {
+          canvasContext.fillStyle = '#000';
+        }
+
+        canvasContext.fillText(localHour, xOuter, yOuter);
       }
     }
 
-    // ── Draw a single hand showing UTC time on a 24-hour scale ──
+    // ── Draw the rotating hour hand showing current UTC time ──
     function drawHourHand(radius) {
       const nowUtc        = new Date();
       const hour          = nowUtc.getUTCHours();
       const minute        = nowUtc.getUTCMinutes();
       const fractionOfDay = (hour + minute / 60) / 24;
 
-      // Zero at top (12), full circle over 24h
       const angle         = fractionOfDay * 2 * Math.PI - Math.PI;
       const handLength    = radius - (radius * 0.10) + 2;
       const handHalfWidth = Math.max(14, radius * 0.07);
 
       canvasContext.save();
       canvasContext.rotate(angle);
+
+      // Draw triangular hand
       canvasContext.beginPath();
       canvasContext.moveTo(-handHalfWidth / 2, 0);
       canvasContext.lineTo(0, -handLength);
@@ -260,10 +265,11 @@ canvasContext.fillText(localHour, xOuter, yOuter);
       canvasContext.closePath();
       canvasContext.fillStyle = '#000';
       canvasContext.fill();
+
       canvasContext.restore();
     }
 
-    // ── Draw a semi-transparent half-circle for day/night overlay ──
+    // ── Draw a semi-transparent overlay to show night side ──
     function drawDayNightOverlay(radius) {
       const nowUtc        = new Date();
       const hour          = (nowUtc.getUTCHours() + 24) % 24;
@@ -275,11 +281,11 @@ canvasContext.fillText(localHour, xOuter, yOuter);
       canvasContext.moveTo(0, 0);
       canvasContext.arc(0, 0, radius, startAngle, startAngle + Math.PI);
       canvasContext.closePath();
-      canvasContext.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      canvasContext.fillStyle = 'rgba(0, 0, 0, 0.5)'; // translucent black
       canvasContext.fill();
     }
 
-    // ── Update the digital UTC clock below the canvas ──
+    // ── Show the digital UTC time below the clock ──
     function updateDigitalClock() {
       const now    = new Date();
       const hour   = String(now.getUTCHours()).padStart(2, '0');
@@ -288,13 +294,13 @@ canvasContext.fillText(localHour, xOuter, yOuter);
       digitalClockElement.textContent = `${hour}:${minute}:${second} UTC`;
     }
 
-    // ── Format offset like UTC+5 or UTC−8 ──
+    // ── Format the time zone offset as a label like UTC+5 or UTC−8 ──
     function formatUtcOffset(offset) {
       const sign = offset >= 0 ? '+' : '−';
       return `UTC${sign}${Math.abs(offset)}`;
     }
 
-    // ── Update the local time display for the selected zone ──
+    // ── Show the local time for the selected city and zone ──
     function updateLocalTime() {
       const now         = new Date();
       const utcHour     = now.getUTCHours();
@@ -308,31 +314,31 @@ canvasContext.fillText(localHour, xOuter, yOuter);
       const secondString= String(utcSecond).padStart(2, '0');
 
       const cityName     = timeZones[currentZoneIndex].city;
-      const offsetString= formatUtcOffset(zoneOffset);
+      const offsetString = formatUtcOffset(zoneOffset);
 
-      localTimeElement.textContent =
-        `${hourString}:${minuteString}:${secondString} ${cityName} (${offsetString})`;
+      localTimeElement.textContent = `${hourString}:${minuteString}:${secondString} ${cityName} (${offsetString})`;
     }
 
-    // ── Handlers for ← and → buttons ──
+    // ── Button click: move to the next time zone ──
     increaseZoneButton.addEventListener('click', () => {
       currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
       updateLocalTime();
       drawClockFace();
     });
 
+    // ── Button click: move to the previous time zone ──
     decreaseZoneButton.addEventListener('click', () => {
       currentZoneIndex = (currentZoneIndex - 1 + timeZones.length) % timeZones.length;
       updateLocalTime();
       drawClockFace();
     });
 
-    // ── Touch-drag on slider to change time-zone ──
+    // ── Swipe left/right on the slider bar to change zones ──
     const swipeStepPixels = window.innerWidth / 7;
     let touchStartX, startZoneIndex;
 
     timeZoneSliderElement.addEventListener('touchstart', e => {
-      e.preventDefault();
+      e.preventDefault();  // Disable browser swipe
       touchStartX    = e.touches[0].clientX;
       startZoneIndex = currentZoneIndex;
     });
@@ -350,13 +356,13 @@ canvasContext.fillText(localHour, xOuter, yOuter);
       }
     });
 
-    // ── Start the clock updates ──
+    // ── Start updating everything once page loads ──
     onWindowResize();
     setInterval(() => {
       drawClockFace();
       updateDigitalClock();
       updateLocalTime();
-    }, 1000);
+    }, 1000); // Update every second
   </script>
 </body>
 </html>
