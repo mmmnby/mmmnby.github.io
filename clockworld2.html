@@ -2,9 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+ 
   <!-- Prevent users from zooming in or out on mobile devices -->
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="viewport" 
+    content="width=device-width, 
+    initial-scale=1, 
+    maximum-scale=1, 
+    user-scalable=no">
+  
   <title>Responsive 24-Hour Clock with Day/Night Rings</title>
+  
   <style>
     /* ── Overall page styling ── */
     html, body {
@@ -59,7 +66,9 @@
       background: #ccc;
     }
   </style>
+  
 </head>
+  
 <body>
 
   <!-- Canvas where the 24-hour clock is drawn -->
@@ -83,6 +92,7 @@
   <div id="timeZoneSlider"></div>
 
   <script>
+    
     // ── Load a background image of the world map ──
     const worldMapImage = new Image();
     worldMapImage.src = 'worldmap.jpg';  // Image file to use
@@ -364,5 +374,7 @@
       updateLocalTime();
     }, 1000); // Update every second
   </script>
+  
 </body>
+  
 </html>
