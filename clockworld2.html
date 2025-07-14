@@ -226,9 +226,16 @@
         canvasContext.fillStyle = '#000';
         canvasContext.fillText(utcHour, xInner, yInner);
 
-        // Local hour: highlight 12 in red
-        canvasContext.fillStyle = (localHour === 12 ? 'red' : '#000');
-        canvasContext.fillText(localHour, xOuter, yOuter);
+        // Local hour: highlight 12 in red, 6 and 18 in blue
+if (localHour === 12) {
+  canvasContext.fillStyle = 'red';
+} else if (localHour === 6 || localHour === 18) {
+  canvasContext.fillStyle = 'blue';
+} else {
+  canvasContext.fillStyle = '#000';
+}
+canvasContext.fillText(localHour, xOuter, yOuter);
+      
       }
     }
 
