@@ -5,7 +5,9 @@
   <meta name="viewport"
         content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>Responsive 24-Hour Clock (UTC-8)</title>
+
   <style>
+    /* Reset default spacing and make body fill the screen */
     html, body {
       margin: 0;
       padding: 0;
@@ -18,10 +20,12 @@
       font-family: sans-serif;
     }
 
+    /* Ensure the canvas is a block-level element */
     canvas {
       display: block;
     }
 
+    /* Style for the digital time readout below the clock */
     #digital-time {
       margin-top: 0.5em;
       font-size: 1em;
@@ -30,113 +34,154 @@
   </style>
 </head>
 <body>
+
+  <!-- Canvas for drawing the analog clock -->
   <canvas id="clock-canvas"></canvas>
+
+  <!-- Div for showing the digital time -->
   <div id="digital-time"></div>
 
   <script>
-    const canvas = document.getElementById('clock-canvas');
-    const context = canvas.getContext('2d');
-    const digitalDisplay = document.getElementById('digital-time');
+    // Get references to the canvas and digital display elements
+    const canvas            = document.getElementById('clock-canvas');
+    const context           = canvas.getContext('2d');
+    const digitalDisplay    = document.getElementById('digital-time');
 
-    // Fixed UTC offset (change this value to adjust the time zone)
+    // Set your fixed UTC offset here (e.g., -8 for UTC-8)
     const fixedUtcOffsetHours = -8;
 
+    /**
+     * Resize the canvas to fill the width of the window,
+     * keep it square, and redraw the clock.
+     */
     function resizeCanvasToWindow() {
       const width = window.innerWidth;
-      canvas.width = width;
+      canvas.width  = width;
       canvas.height = width;
       drawClockFace();
       updateDigitalTime();
     }
 
+    // Redraw on window resize or orientation change
     window.addEventListener('resize', resizeCanvasToWindow);
     window.addEventListener('orientationchange', resizeCanvasToWindow);
 
+    /**
+     * Draw the entire clock: background, numbers, and hour hand.
+     */
     function drawClockFace() {
-      const canvasWidth = canvas.width;
-      const center = canvasWidth / 2;
-      const radius = center * 0.85; // leave margin for numbers
+      const size   = canvas.width;         // Canvas is square
+      const center = size / 2;             // Center coordinate
+      const radius = center * 0.85;        // Leave margin for numbers
 
+      // Reset any existing transforms and clear the canvas
       context.setTransform(1, 0, 0, 1, 0, 0);
-      context.clearRect(0, 0, canvasWidth, canvasWidth);
+      context.clearRect(0, 0, size, size);
+
+      // Move origin to center
       context.translate(center, center);
 
-      drawClockBackground(radius, canvasWidth);
+      // Draw background, ticks, numbers, and hour hand
+      drawClockBackground(radius);
       drawClockHourNumbers(radius);
       drawClockHourHand(radius);
     }
 
-    function drawClockBackground(radius, canvasWidth) {
-      const majorTickLength = radius * 0.10;
-      const mediumTickLength = radius * 0.066;
-      const minorTickLength = radius * 0.033;
+    /**
+     * Draw the clock face background and ticks.
+     * - Fills the bottom half in gray
+     * - Draws an outer border
+     * - Draws 96 ticks (one per 15 minutes)
+     */
+    function drawClockBackground(radius) {
+      // Tick lengths for major (hour), medium (half-hour), minor (quarter-hour)
+      const majorTick   = radius * 0.10;
+      const mediumTick  = radius * 0.066;
+      const minorTick   = radius * 0.033;
+      const fullCircle  = 2 * Math.PI;
 
-      // Fill the bottom half with a darker gray
+      // Fill bottom half-circle for day/night shading
       context.beginPath();
       context.moveTo(0, 0);
-      // Draw arc from 0° to 180° (bottom half)
-  context.arc(0, 0, radius, 0, Math.PI);
+      context.arc(0, 0, radius, 0, Math.PI);  // 0 to 180 degrees
       context.closePath();
       context.fillStyle = '#ccc';
       context.fill();
 
-      // Outer circle
+      // Draw outer circle border
       context.beginPath();
-      context.arc(0, 0, radius, 0, 2 * Math.PI);
-      context.lineWidth = Math.max(2, canvasWidth * 0.008);
+      context.arc(0, 0, radius, 0, fullCircle);
+      context.lineWidth   = Math.max(2, canvas.width * 0.008);
       context.strokeStyle = '#000';
       context.stroke();
 
-      // Draw 96 ticks (24 hours * 4 ticks/hour)
+      // Draw all 96 ticks around the circle
       for (let i = 0; i < 96; i++) {
-        const angle = i * 2 * Math.PI / 96 + 1.5 * Math.PI; // rotate so 0 is at bottom
-        const isHourTick = i % 4 === 0;
-        const isHalfHourTick = i % 2 === 0;
-        const tickLength = isHourTick ? majorTickLength : isHalfHourTick ? mediumTickLength : minorTickLength;
-        const outerRadius = radius;
-        const innerRadius = radius - tickLength;
+        // Angle offset so “0” is at the bottom
+        const angle       = i * fullCircle / 96 + 1.5 * Math.PI;
+        const isHourTick  = i % 4 === 0;
+        const isHalfTick  = i % 2 === 0;
+        const tickLength  = isHourTick ? majorTick
+                          : isHalfTick ? mediumTick
+                                       : minorTick;
+        const outerR      = radius;
+        const innerR      = radius - tickLength;
 
+        // Draw the tick mark
         context.beginPath();
-        context.moveTo(outerRadius * Math.cos(angle), outerRadius * Math.sin(angle));
-        context.lineTo(innerRadius * Math.cos(angle), innerRadius * Math.sin(angle));
-        context.lineWidth = isHourTick ? Math.max(3, canvasWidth * 0.01) : Math.max(1, canvasWidth * 0.004);
+        context.moveTo(outerR * Math.cos(angle), outerR * Math.sin(angle));
+        context.lineTo(innerR * Math.cos(angle), innerR * Math.sin(angle));
+        context.lineWidth   = isHourTick
+                            ? Math.max(3, canvas.width * 0.01)
+                            : Math.max(1, canvas.width * 0.004);
         context.strokeStyle = '#000';
         context.stroke();
       }
     }
 
+    /**
+     * Draw the 24 hour numbers around the clock.
+     */
     function drawClockHourNumbers(radius) {
-      const fontSize = Math.max(10, radius * 0.08);
-      context.font = `${fontSize}px sans-serif`;
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
+      const fontSize     = Math.max(10, radius * 0.08);
+      context.font        = `${fontSize}px sans-serif`;
+      context.textAlign   = 'center';
+      context.textBaseline= 'middle';
 
+      // Place numbers just outside the ticks
       const numberRadius = radius * 1.10;
 
       for (let hour = 0; hour < 24; hour++) {
+        // Angle offset so “0” is at the bottom
         const angle = hour * 2 * Math.PI / 24 + 0.5 * Math.PI;
-        const x = numberRadius * Math.cos(angle);
-        const y = numberRadius * Math.sin(angle);
+        const x     = numberRadius * Math.cos(angle);
+        const y     = numberRadius * Math.sin(angle);
+
         context.fillStyle = '#000';
         context.fillText(hour, x, y);
       }
     }
 
+    /**
+     * Draw the hour hand based on the fixed UTC offset.
+     */
     function drawClockHourHand(radius) {
-      const utcNow = new Date();
-      const hours = (utcNow.getUTCHours() + fixedUtcOffsetHours + 24) % 24;
-      const minutes = utcNow.getUTCMinutes();
-      const hourFraction = (hours + minutes / 60) / 24;
-      const angle = hourFraction * 2 * Math.PI + Math.PI;
+      const now       = new Date();
+      // Calculate adjusted hour and minute for hand position
+      const hours     = (now.getUTCHours() + fixedUtcOffsetHours + 24) % 24;
+      const minutes   = now.getUTCMinutes();
+      // Fraction of the 24-hour circle
+      const fraction  = (hours + minutes / 60) / 24;
+      const angle     = fraction * 2 * Math.PI + Math.PI;
 
-      const handLength = radius - radius * 0.10 + 2;
+      const handLen   = radius - radius * 0.10 + 2;
       const handWidth = Math.max(14, radius * 0.07);
 
       context.save();
       context.rotate(angle);
       context.beginPath();
       context.moveTo(-handWidth / 2, 0);
-      context.lineTo(0, -handLength);
+      context.lineTo(0, -handLen);
       context.lineTo(handWidth / 2, 0);
       context.closePath();
       context.fillStyle = '#000';
@@ -144,25 +189,31 @@
       context.restore();
     }
 
+    /**
+     * Update the digital time display below the clock.
+     */
     function updateDigitalTime() {
-      const utcNow = new Date();
-      const hours = (utcNow.getUTCHours() + fixedUtcOffsetHours + 24) % 24;
-      const minutes = utcNow.getUTCMinutes();
-      const seconds = utcNow.getUTCSeconds();
+      const now     = new Date();
+      // Adjust hours for fixed UTC offset
+      const hours   = (now.getUTCHours() + fixedUtcOffsetHours + 24) % 24;
+      const minutes = now.getUTCMinutes();
+      const seconds = now.getUTCSeconds();
 
-      const formattedHours = String(hours).padStart(2, '0');
-      const formattedMinutes = String(minutes).padStart(2, '0');
-      const formattedSeconds = String(seconds).padStart(2, '0');
+      // Add leading zeros if needed
+      const hh = String(hours).padStart(2, '0');
+      const mm = String(minutes).padStart(2, '0');
+      const ss = String(seconds).padStart(2, '0');
 
-      digitalDisplay.textContent = `${formattedHours}:${formattedMinutes}:${formattedSeconds} UTC${fixedUtcOffsetHours}`;
+      digitalDisplay.textContent = `${hh}:${mm}:${ss} UTC${fixedUtcOffsetHours}`;
     }
 
-    // Initial drawing and repeat every second
+    // INITIALIZE: size the canvas and start the clock updates
     resizeCanvasToWindow();
     setInterval(() => {
       drawClockFace();
       updateDigitalTime();
     }, 1000);
+
   </script>
 </body>
 </html>
