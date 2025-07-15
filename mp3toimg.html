@@ -1,20 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>MP3 to Spectrogram</title>
+  <meta charset="UTF-8" />
+  <title>MP3 Spectrogram with Labels</title>
   <style>
     body {
-      background-color: #111;
+      background: #111;
       color: white;
       text-align: center;
       font-family: sans-serif;
     }
     canvas {
       background: black;
+      border: 1px solid #444;
       display: block;
       margin: 20px auto;
-      border: 1px solid #444;
     }
     .controls {
       margin: 20px auto;
@@ -44,11 +44,10 @@
     <div id="status">Status: Waiting for file...</div>
   </div>
 
-  <canvas id="spectrogram" width="1000" height="256"></canvas>
+  <canvas id="spectrogram" width="1100" height="300"></canvas>
 
-  <!-- ✅ Inline JS: includes fft.js and main logic -->
   <script>
-    // === FFT.js (minified and inlined) ===
+    // === Simple inline FFT.js ===
     class FFT {
       constructor(size) {
         this.size = size;
@@ -100,10 +99,8 @@
               const im0 = out[i0 + 1];
               const re1 = out[i1];
               const im1 = out[i1 + 1];
-
               const tre = re1 * tRe - im1 * tIm;
               const tim = re1 * tIm + im1 * tRe;
-
               out[i1] = re0 - tre;
               out[i1 + 1] = im0 - tim;
               out[i0] = re0 + tre;
@@ -122,7 +119,6 @@
       }
     }
 
-    // === UI and Audio Logic ===
     const fileInput = document.getElementById('audioInput');
     const processBtn = document.getElementById('processBtn');
     const saveBtn = document.getElementById('saveBtn');
@@ -159,36 +155,39 @@
       try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const arrayBuffer = await selectedFile.arrayBuffer();
-
-        let audioBuffer;
-        try {
-          audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-        } catch {
-          throw new Error("Audio decoding failed. Unsupported or corrupted file.");
-        }
-
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
         const channelData = audioBuffer.getChannelData(0);
         if (!channelData || channelData.length === 0) {
-          throw new Error("No audio data found in the selected file.");
+          throw new Error("No audio data found in file.");
         }
 
         const fftSize = 512;
-        const fft = new FFT(fftSize);
-        const bins = fftSize / 2;
         const hopSize = fftSize / 2;
+        const fft = new FFT(fftSize);
+        const output = fft.createComplexArray();
+        const bins = fftSize / 2;
 
-        const canvasWidth = canvas.width;
-        const canvasHeight = canvas.height;
-        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+        const width = 1024;
+        const height = 256;
+        const marginLeft = 60;
+        const marginBottom = 20;
+        const totalWidth = width + marginLeft;
+        const totalHeight = height + marginBottom;
+        canvas.width = totalWidth;
+        canvas.height = totalHeight;
 
         const totalSamples = channelData.length;
+        const duration = audioBuffer.duration;
         const totalFrames = Math.floor((totalSamples - fftSize) / hopSize);
-        const step = Math.max(1, Math.floor(totalFrames / canvasWidth));
+        const step = Math.max(1, Math.floor(totalFrames / width));
+
+        ctx.clearRect(0, 0, totalWidth, totalHeight);
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, totalWidth, totalHeight);
 
         const input = new Array(fftSize).fill(0);
-        const output = fft.createComplexArray();
 
-        for (let x = 0; x < canvasWidth; x++) {
+        for (let x = 0; x < width; x++) {
           const frameIndex = x * step;
           const offset = frameIndex * hopSize;
 
@@ -201,14 +200,14 @@
           fft.realTransform(output, input);
           fft.completeSpectrum(output);
 
-          for (let y = 0; y < bins && y < canvasHeight; y++) {
+          for (let y = 0; y < bins && y < height; y++) {
             const re = output[2 * y];
             const im = output[2 * y + 1];
             const mag = Math.sqrt(re * re + im * im);
             const dB = Math.log10(mag + 1) * 40;
-            const colorValue = Math.min(255, Math.floor(dB * 5));
-            ctx.fillStyle = `hsl(${colorValue}, 100%, 50%)`;
-            ctx.fillRect(x, canvasHeight - 1 - y, 1, 1);
+            const color = Math.min(255, Math.floor(dB * 5));
+            ctx.fillStyle = `hsl(${color}, 100%, 50%)`;
+            ctx.fillRect(x + marginLeft, height - 1 - y, 1, 1);
           }
 
           if (x % 100 === 0) {
@@ -216,11 +215,32 @@
           }
         }
 
+        // Draw frequency (Y) labels
+        ctx.fillStyle = "white";
+        ctx.font = "12px sans-serif";
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        const nyquist = audioCtx.sampleRate / 2;
+        for (let y = 0; y <= 4; y++) {
+          const pos = (y / 4) * height;
+          const freq = ((4 - y) / 4) * nyquist;
+          ctx.fillText(freq.toFixed(0) + " Hz", marginLeft - 4, pos);
+        }
+
+        // Draw time (X) labels
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        for (let x = 0; x <= 10; x++) {
+          const pos = x * (width / 10);
+          const time = (x / 10) * duration;
+          ctx.fillText(time.toFixed(1) + "s", pos + marginLeft, height + 2);
+        }
+
         setStatus("Done!");
         saveBtn.disabled = false;
-      } catch (error) {
-        console.error(error);
-        setStatus(error.message || "Unknown error occurred.", true);
+      } catch (err) {
+        console.error(err);
+        setStatus(err.message || "An error occurred", true);
       } finally {
         processBtn.disabled = false;
       }
