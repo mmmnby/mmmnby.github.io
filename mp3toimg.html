@@ -225,7 +225,7 @@
         const totalVisibleTime = secondsPerPixel * width;
         for (let x = 0; x <= 10; x++) {
           const pos = x * (width / 10);
-          const time = (x / 10) * totalVisibleTime;
+          const time =  (x / 10) * totalVisibleTime;
           ctx.fillText(time.toFixed(1) + "s", pos + marginLeft, height + 2);
         }
 
