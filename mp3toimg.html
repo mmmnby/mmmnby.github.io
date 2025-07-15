@@ -1,99 +1,137 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>MP3 to Full Spectrogram</title>
-    <style>
-        body {
-            background-color: #111;
-            color: #fff;
-            font-family: sans-serif;
-            text-align: center;
-            padding: 20px;
-        }
-        canvas {
-            background-color: black;
-            display: block;
-            margin: 20px auto;
-            border: 1px solid #444;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>MP3 to Spectrogram</title>
+  <style>
+    body {
+      background-color: #111;
+      color: white;
+      text-align: center;
+      font-family: sans-serif;
+    }
+    canvas {
+      background: black;
+      display: block;
+      margin: 20px auto;
+      border: 1px solid #444;
+    }
+    .controls {
+      margin: 20px auto;
+    }
+    button {
+      padding: 8px 16px;
+      font-size: 16px;
+      margin: 10px;
+    }
+    #status {
+      margin-top: 10px;
+      font-style: italic;
+    }
+  </style>
 </head>
 <body>
-    <h1>MP3 to Full Spectrogram</h1>
-    <input type="file" id="audioInput" accept=".mp3">
-    <canvas id="spectrogram" width="1000" height="256"></canvas>
+  <h1>MP3 to Spectrogram</h1>
 
-    <!-- Include FFT.js -->
-    <script src="https://cdn.jsdelivr.net/npm/fft.js/dist/fft.min.js"></script>
+  <div class="controls">
+    <input type="file" id="audioInput" accept=".mp3"><br>
+    <button id="processBtn">Process</button>
+    <button id="saveBtn" disabled>Save Image</button>
+    <div id="status">Status: Waiting for file...</div>
+  </div>
 
-    <script>
-        const audioInput = document.getElementById('audioInput');
-        const canvas = document.getElementById('spectrogram');
-        const ctx = canvas.getContext('2d');
+  <canvas id="spectrogram" width="1000" height="256"></canvas>
 
-        function getColor(value) {
-            return `hsl(${value}, 100%, 50%)`;
+  <!-- Include FFT.js -->
+  <script src="https://cdn.jsdelivr.net/npm/fft.js/dist/fft.min.js"></script>
+
+  <script>
+    const fileInput = document.getElementById('audioInput');
+    const processBtn = document.getElementById('processBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const statusText = document.getElementById('status');
+    const canvas = document.getElementById('spectrogram');
+    const ctx = canvas.getContext('2d');
+
+    let selectedFile = null;
+
+    fileInput.addEventListener('change', () => {
+      selectedFile = fileInput.files[0];
+      statusText.textContent = selectedFile
+        ? `Status: Loaded "${selectedFile.name}"`
+        : "Status: Waiting for file...";
+    });
+
+    processBtn.addEventListener('click', async () => {
+      if (!selectedFile) {
+        alert("Please select an MP3 file first.");
+        return;
+      }
+
+      statusText.textContent = "Status: Processing...";
+      saveBtn.disabled = true;
+
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const arrayBuffer = await selectedFile.arrayBuffer();
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      const channelData = audioBuffer.getChannelData(0); // Use first channel
+      const sampleRate = audioBuffer.sampleRate;
+
+      const fftSize = 512;
+      const fft = new FFT(fftSize);
+      const bins = fftSize / 2;
+      const hopSize = fftSize / 2;
+
+      const canvasWidth = canvas.width;
+      const canvasHeight = canvas.height;
+      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+      const totalSamples = channelData.length;
+      const totalFrames = Math.floor((totalSamples - fftSize) / hopSize);
+      const step = Math.max(1, Math.floor(totalFrames / canvasWidth));
+
+      const input = new Array(fftSize).fill(0);
+      const output = fft.createComplexArray();
+
+      for (let x = 0; x < canvasWidth; x++) {
+        const frameIndex = x * step;
+        const offset = frameIndex * hopSize;
+
+        for (let i = 0; i < fftSize; i++) {
+          const sample = channelData[offset + i] || 0;
+          const window = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (fftSize - 1))); // Hann
+          input[i] = sample * window;
         }
 
-        audioInput.addEventListener('change', async function () {
-            const file = this.files[0];
-            if (!file) {
-                alert('Please select an MP3 file.');
-                return;
-            }
+        fft.realTransform(output, input);
+        fft.completeSpectrum(output);
 
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const arrayBuffer = await file.arrayBuffer();
-            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        for (let y = 0; y < bins && y < canvasHeight; y++) {
+          const re = output[2 * y];
+          const im = output[2 * y + 1];
+          const mag = Math.sqrt(re * re + im * im);
+          const dB = Math.log10(mag + 1) * 40;
+          const colorValue = Math.min(255, Math.floor(dB * 5));
+          ctx.fillStyle = `hsl(${colorValue}, 100%, 50%)`;
+          ctx.fillRect(x, canvasHeight - 1 - y, 1, 1);
+        }
 
-            const channelData = audioBuffer.getChannelData(0); // Use left channel only
-            const sampleRate = audioBuffer.sampleRate;
+        // Optional: allow UI updates
+        if (x % 100 === 0) {
+          await new Promise(requestAnimationFrame);
+        }
+      }
 
-            const fftSize = 512;
-            const fft = new FFT(fftSize);
-            const bins = fftSize / 2;
+      statusText.textContent = "Status: Done!";
+      saveBtn.disabled = false;
+    });
 
-            const canvasWidth = canvas.width;
-            const canvasHeight = canvas.height;
-
-            const hopSize = fftSize / 2;
-            const totalFrames = Math.floor((channelData.length - fftSize) / hopSize);
-            const step = Math.floor(totalFrames / canvasWidth);
-
-            const input = new Array(fftSize).fill(0);
-            const output = fft.createComplexArray();
-
-            // Clear canvas before drawing
-            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-
-            for (let i = 0; i < canvasWidth; i++) {
-                const start = i * step * hopSize;
-                for (let j = 0; j < fftSize; j++) {
-                    input[j] = channelData[start + j] || 0;
-                }
-
-                // Apply Hann window (for smoother transitions)
-                for (let j = 0; j < fftSize; j++) {
-                    input[j] *= 0.5 * (1 - Math.cos((2 * Math.PI * j) / (fftSize - 1)));
-                }
-
-                fft.realTransform(output, input);
-                fft.completeSpectrum(output);
-
-                for (let y = 0; y < bins && y < canvasHeight; y++) {
-                    const re = output[2 * y];
-                    const im = output[2 * y + 1];
-                    const mag = Math.sqrt(re * re + im * im);
-
-                    const norm = Math.min(255, Math.floor(255 * Math.log10(1 + mag)));
-                    ctx.fillStyle = getColor(norm);
-                    ctx.fillRect(i, canvasHeight - 1 - y, 1, 1);
-                }
-            }
-
-            alert('Spectrogram rendered!');
-        });
-    </script>
+    saveBtn.addEventListener('click', () => {
+      const link = document.createElement('a');
+      link.download = 'spectrogram.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+  </script>
 </body>
 </html>
