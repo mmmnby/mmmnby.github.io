@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Full MP3 Spectrogram</title>
+    <title>MP3 to Full Spectrogram</title>
     <style>
         body {
             background-color: #111;
@@ -24,19 +24,20 @@
     <input type="file" id="audioInput" accept=".mp3">
     <canvas id="spectrogram" width="1000" height="256"></canvas>
 
+    <!-- Include FFT.js -->
+    <script src="https://cdn.jsdelivr.net/npm/fft.js/dist/fft.min.js"></script>
+
     <script>
         const audioInput = document.getElementById('audioInput');
         const canvas = document.getElementById('spectrogram');
         const ctx = canvas.getContext('2d');
 
-        // Utility function to map intensity to a color (e.g., HSL heatmap)
         function getColor(value) {
             return `hsl(${value}, 100%, 50%)`;
         }
 
         audioInput.addEventListener('change', async function () {
             const file = this.files[0];
-
             if (!file) {
                 alert('Please select an MP3 file.');
                 return;
@@ -46,58 +47,52 @@
             const arrayBuffer = await file.arrayBuffer();
             const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
+            const channelData = audioBuffer.getChannelData(0); // Use left channel only
             const sampleRate = audioBuffer.sampleRate;
-            const channelData = audioBuffer.getChannelData(0); // Use first channel only
 
             const fftSize = 512;
-            const hopSize = fftSize / 2;
-            const numBins = fftSize / 2;
+            const fft = new FFT(fftSize);
+            const bins = fftSize / 2;
 
             const canvasWidth = canvas.width;
             const canvasHeight = canvas.height;
 
-            const totalSamples = channelData.length;
-            const totalFrames = Math.floor((totalSamples - fftSize) / hopSize);
+            const hopSize = fftSize / 2;
+            const totalFrames = Math.floor((channelData.length - fftSize) / hopSize);
+            const step = Math.floor(totalFrames / canvasWidth);
 
-            // To fit it on canvas, we may need to sample fewer frames than exist
-            const framesToDraw = Math.min(canvasWidth, totalFrames);
-            const frameStep = Math.floor(totalFrames / framesToDraw);
+            const input = new Array(fftSize).fill(0);
+            const output = fft.createComplexArray();
 
-            // Prepare FFT
-            const analyser = audioContext.createAnalyser();
-            analyser.fftSize = fftSize;
-            const fftBuffer = new Uint8Array(numBins);
+            // Clear canvas before drawing
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-            const offlineCtx = new OfflineAudioContext(1, fftSize, sampleRate);
+            for (let i = 0; i < canvasWidth; i++) {
+                const start = i * step * hopSize;
+                for (let j = 0; j < fftSize; j++) {
+                    input[j] = channelData[start + j] || 0;
+                }
 
-            for (let i = 0; i < framesToDraw; i++) {
-                const start = i * frameStep * hopSize;
-                const segment = channelData.slice(start, start + fftSize);
+                // Apply Hann window (for smoother transitions)
+                for (let j = 0; j < fftSize; j++) {
+                    input[j] *= 0.5 * (1 - Math.cos((2 * Math.PI * j) / (fftSize - 1)));
+                }
 
-                const audioBufferSegment = offlineCtx.createBuffer(1, fftSize, sampleRate);
-                audioBufferSegment.copyToChannel(segment, 0);
+                fft.realTransform(output, input);
+                fft.completeSpectrum(output);
 
-                const source = offlineCtx.createBufferSource();
-                source.buffer = audioBufferSegment;
+                for (let y = 0; y < bins && y < canvasHeight; y++) {
+                    const re = output[2 * y];
+                    const im = output[2 * y + 1];
+                    const mag = Math.sqrt(re * re + im * im);
 
-                const analyserNode = offlineCtx.createAnalyser();
-                analyserNode.fftSize = fftSize;
-
-                source.connect(analyserNode);
-                analyserNode.connect(offlineCtx.destination);
-                source.start();
-
-                // Manually compute FFT
-                analyserNode.getByteFrequencyData(fftBuffer);
-
-                for (let y = 0; y < numBins; y++) {
-                    const value = fftBuffer[y];
-                    ctx.fillStyle = getColor(value);
-                    ctx.fillRect(i, canvasHeight - y, 1, 1);
+                    const norm = Math.min(255, Math.floor(255 * Math.log10(1 + mag)));
+                    ctx.fillStyle = getColor(norm);
+                    ctx.fillRect(i, canvasHeight - 1 - y, 1, 1);
                 }
             }
 
-            alert('Spectrogram rendered.');
+            alert('Spectrogram rendered!');
         });
     </script>
 </body>
