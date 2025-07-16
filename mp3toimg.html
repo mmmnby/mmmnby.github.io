@@ -2,30 +2,30 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Hour-Long MP3 Spectrogram Viewer</title>
+  <title>MP3 Spectrogram with Zoom</title>
   <style>
     body {
       background: #111;
       color: white;
-      font-family: sans-serif;
       text-align: center;
+      font-family: sans-serif;
     }
     canvas {
       background: black;
-      margin: 20px auto;
-      border: 1px solid #555;
+      border: 1px solid #444;
       display: block;
+      margin: 20px auto;
     }
     .controls {
-      margin: 10px auto;
+      margin: 20px auto;
     }
-    button, select, input[type="number"] {
-      padding: 8px;
-      font-size: 14px;
-      margin: 6px;
+    button, select {
+      padding: 8px 12px;
+      font-size: 16px;
+      margin: 10px;
     }
     #status {
-      margin-top: 8px;
+      margin-top: 10px;
       font-style: italic;
       color: #ccc;
     }
@@ -35,25 +35,22 @@
   </style>
 </head>
 <body>
-  <h1>Spectrogram Viewer (for Hour-Long MP3s)</h1>
+  <h1>MP3 Spectrogram with Time Scaling</h1>
 
   <div class="controls">
-    <input type="file" id="audioInput" accept=".mp3">
-    <label for="scale">Seconds/pixel:</label>
-    <select id="scale">
-      <option value="0.2">0.2</option>
-      <option value="0.5">0.5</option>
-      <option value="1" selected>1</option>
-      <option value="2">2</option>
-      <option value="5">5</option>
-      <option value="10">10</option>
-    </select>
+    <input type="file" id="audioInput" accept=".mp3"><br>
 
-    <label for="slice">Slice (min):</label>
-    <input type="number" id="sliceStart" value="0" min="0" step="1">
-    <button id="prevSlice">◀</button>
-    <button id="nextSlice">▶</button>
-    <button id="processBtn">Process Slice</button>
+    <label for="scaleSelect">Seconds per pixel:</label>
+    <select id="scaleSelect">
+      <option value="0.1">0.1 s/pixel (zoomed)</option>
+      <option value="0.5">0.5 s/pixel</option>
+      <option value="1">1 s/pixel</option>
+      <option value="2">2 s/pixel</option>
+      <option value="5">5 s/pixel</option>
+      <option value="10">10 s/pixel (wide)</option>
+    </select><br>
+
+    <button id="processBtn">Process</button>
     <button id="saveBtn" disabled>Save Image</button>
     <div id="status">Status: Waiting for file...</div>
   </div>
@@ -61,6 +58,7 @@
   <canvas id="spectrogram" width="1200" height="300"></canvas>
 
   <script>
+    // FFT.js (simplified and inlined)
     class FFT {
       constructor(size) {
         this.size = size;
@@ -131,130 +129,120 @@
     const ctx = canvas.getContext('2d');
     const processBtn = document.getElementById('processBtn');
     const saveBtn = document.getElementById('saveBtn');
-    const audioInput = document.getElementById('audioInput');
-    const scaleSelect = document.getElementById('scale');
-    const status = document.getElementById('status');
-    const sliceStartInput = document.getElementById('sliceStart');
-    const prevSliceBtn = document.getElementById('prevSlice');
-    const nextSliceBtn = document.getElementById('nextSlice');
-
-    let audioBuffer = null;
+    const fileInput = document.getElementById('audioInput');
+    const scaleSelect = document.getElementById('scaleSelect');
+    const statusText = document.getElementById('status');
 
     function setStatus(msg, isError = false) {
-      status.textContent = "Status: " + msg;
-      status.classList.toggle('error', isError);
+      statusText.textContent = 'Status: ' + msg;
+      statusText.classList.toggle('error', isError);
     }
 
-    audioInput.addEventListener('change', async () => {
-      setStatus("Decoding audio...");
-      try {
-        const file = audioInput.files[0];
-        const arrayBuffer = await file.arrayBuffer();
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-        setStatus("Audio loaded. Duration: " + audioBuffer.duration.toFixed(1) + "s");
-      } catch (e) {
-        console.error(e);
-        setStatus("Error decoding audio", true);
-      }
-    });
-
-    prevSliceBtn.onclick = () => {
-      const val = parseInt(sliceStartInput.value, 10);
-      if (val > 0) sliceStartInput.value = val - 10;
-    };
-    nextSliceBtn.onclick = () => {
-      sliceStartInput.value = parseInt(sliceStartInput.value, 10) + 10;
-    };
-
     processBtn.addEventListener('click', async () => {
-      if (!audioBuffer) {
-        setStatus("No audio loaded", true);
-        return;
-      }
-
-      setStatus("Processing...");
-      processBtn.disabled = true;
-      saveBtn.disabled = true;
+      const file = fileInput.files[0];
+      if (!file) return setStatus("Please select an MP3 file first.", true);
 
       const secondsPerPixel = parseFloat(scaleSelect.value);
       const fftSize = 512;
       const hopSize = fftSize / 2;
       const bins = fftSize / 2;
-      const sampleRate = audioBuffer.sampleRate;
+
       const marginLeft = 60;
       const marginBottom = 20;
       const height = 256;
       const width = 1024;
-      canvas.width = width + marginLeft;
-      canvas.height = height + marginBottom;
+      const totalWidth = width + marginLeft;
+      const totalHeight = height + marginBottom;
+      canvas.width = totalWidth;
+      canvas.height = totalHeight;
+
       ctx.fillStyle = "black";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, totalWidth, totalHeight);
 
-      const sliceStartMin = parseInt(sliceStartInput.value, 10) || 0;
-      const sliceStartSec = sliceStartMin * 60;
-      const sliceEndSec = sliceStartSec + secondsPerPixel * width;
-      const startSample = Math.floor(sliceStartSec * sampleRate);
-      const endSample = Math.min(audioBuffer.length, Math.floor(sliceEndSec * sampleRate));
-      const slice = audioBuffer.getChannelData(0).slice(startSample, endSample);
+      processBtn.disabled = true;
+      saveBtn.disabled = true;
+      setStatus("Decoding audio...");
 
-      const fft = new FFT(fftSize);
-      const input = new Float64Array(fftSize);
-      const output = fft.createComplexArray();
-      const frames = Math.floor((slice.length - fftSize) / hopSize);
-      const pixels = Math.min(frames, width);
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const arrayBuffer = await file.arrayBuffer();
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        const data = audioBuffer.getChannelData(0);
+        const duration = audioBuffer.duration;
+        const sampleRate = audioBuffer.sampleRate;
 
-      for (let px = 0; px < pixels; px++) {
-        const offset = px * hopSize;
-        for (let i = 0; i < fftSize; i++) {
-          input[i] = slice[offset + i] * 0.5 * (1 - Math.cos((2 * Math.PI * i) / (fftSize - 1)));
+        const framesPerPixel = Math.floor((secondsPerPixel * sampleRate) / hopSize);
+        const maxPixels = width;
+        const fft = new FFT(fftSize);
+        const input = new Array(fftSize).fill(0);
+        const output = fft.createComplexArray();
+
+        setStatus("Generating spectrogram...");
+
+        for (let px = 0; px < maxPixels; px++) {
+          const frameIndex = px * framesPerPixel;
+          const offset = frameIndex * hopSize;
+
+          if (offset + fftSize >= data.length) break;
+
+          for (let i = 0; i < fftSize; i++) {
+            const sample = data[offset + i] || 0;
+            const win = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (fftSize - 1)));
+            input[i] = sample * win;
+          }
+
+          fft.realTransform(output, input);
+          fft.completeSpectrum(output);
+
+          for (let y = 0; y < bins && y < height; y++) {
+            const re = output[2 * y];
+            const im = output[2 * y + 1];
+            const mag = Math.sqrt(re * re + im * im);
+            const dB = Math.log10(mag + 1) * 40;
+            const hue = Math.min(255, Math.floor(dB * 5));
+            ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+            ctx.fillRect(px + marginLeft, height - 1 - y, 1, 1);
+          }
+
+          if (px % 100 === 0) await new Promise(r => requestAnimationFrame(r));
         }
-        fft.realTransform(output, input);
-        fft.completeSpectrum(output);
 
-        for (let y = 0; y < bins && y < height; y++) {
-          const re = output[2 * y];
-          const im = output[2 * y + 1];
-          const mag = Math.sqrt(re * re + im * im);
-          const dB = Math.log10(mag + 1) * 40;
-          const hue = Math.min(255, Math.floor(dB * 5));
-          ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
-          ctx.fillRect(px + marginLeft, height - y - 1, 1, 1);
+        // Y-axis frequency labels
+        ctx.fillStyle = "white";
+        ctx.font = "12px sans-serif";
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        const nyquist = sampleRate / 2;
+        for (let y = 0; y <= 4; y++) {
+          const pos = (y / 4) * height;
+          const freq = ((4 - y) / 4) * nyquist;
+          ctx.fillText(freq.toFixed(0) + " Hz", marginLeft - 4, pos);
         }
-      }
 
-      // Y-axis frequency labels
-      ctx.fillStyle = "white";
-      ctx.font = "12px sans-serif";
-      ctx.textAlign = "right";
-      ctx.textBaseline = "middle";
-      const nyquist = sampleRate / 2;
-      for (let y = 0; y <= 4; y++) {
-        const pos = (y / 4) * height;
-        const freq = ((4 - y) / 4) * nyquist;
-        ctx.fillText(freq.toFixed(0) + " Hz", marginLeft - 4, pos);
-      }
+        // X-axis time labels
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        const totalVisibleTime = secondsPerPixel * width;
+        for (let x = 0; x <= 10; x++) {
+          const pos = x * (width / 10);
+          const time = (x / 10) * totalVisibleTime;
+          ctx.fillText(time.toFixed(1) + "s", pos + marginLeft, height + 2);
+        }
 
-      // X-axis time labels
-      ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      const start = sliceStartSec;
-      const totalTime = secondsPerPixel * width;
-      for (let x = 0; x <= 10; x++) {
-        const pos = x * (width / 10);
-        const t = start + (x / 10) * totalTime;
-        ctx.fillText(t.toFixed(1) + "s", pos + marginLeft, height + 2);
+        setStatus("Done!");
+        saveBtn.disabled = false;
+      } catch (err) {
+        console.error(err);
+        setStatus("Error: " + err.message, true);
+      } finally {
+        processBtn.disabled = false;
       }
-
-      setStatus("Done!");
-      saveBtn.disabled = false;
-      processBtn.disabled = false;
     });
 
     saveBtn.addEventListener('click', () => {
       const link = document.createElement('a');
       link.download = 'spectrogram.png';
-      link.href = canvas.toDataURL();
+      link.href = canvas.toDataURL('image/png');
       link.click();
     });
   </script>
