@@ -2,28 +2,27 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>MP3 Spectrogram Viewer (10-min Paging)</title>
+  <title>MP3 Spectrogram with Zoom</title>
   <style>
     body {
       background: #111;
-      color: #fff;
-      font-family: sans-serif;
+      color: white;
       text-align: center;
-      padding: 20px;
+      font-family: sans-serif;
     }
     canvas {
+      background: black;
+      border: 1px solid #444;
       display: block;
       margin: 20px auto;
-      background: black;
-      border: 1px solid #555;
     }
     .controls {
-      margin: 20px 0;
+      margin: 20px auto;
     }
     button, select {
+      padding: 8px 12px;
       font-size: 16px;
-      padding: 6px 12px;
-      margin: 6px;
+      margin: 10px;
     }
     #status {
       margin-top: 10px;
@@ -36,171 +35,30 @@
   </style>
 </head>
 <body>
-  <h1>MP3 Spectrogram Viewer</h1>
+  <h1>MP3 Spectrogram with Time Scaling</h1>
 
   <div class="controls">
-    <input type="file" id="audioInput" accept=".mp3">
-    <button id="processBtn">Load & Process</button><br>
+    <input type="file" id="audioInput" accept=".mp3"><br>
 
-    <button id="prevBtn" disabled>◀ Prev</button>
-    <button id="nextBtn" disabled>Next ▶</button>
+    <label for="scaleSelect">Seconds per pixel:</label>
+    <select id="scaleSelect">
+      <option value="0.1">0.1 s/pixel (zoomed)</option>
+      <option value="0.5">0.5 s/pixel</option>
+      <option value="1">1 s/pixel</option>
+      <option value="2">2 s/pixel</option>
+      <option value="5">5 s/pixel</option>
+      <option value="10">10 s/pixel (wide)</option>
+    </select><br>
+
+    <button id="processBtn">Process</button>
     <button id="saveBtn" disabled>Save Image</button>
-
-    <div id="status">Waiting for file...</div>
+    <div id="status">Status: Waiting for file...</div>
   </div>
 
-  <canvas id="spectrogram" width="1000" height="256"></canvas>
+  <canvas id="spectrogram" width="1200" height="300"></canvas>
 
   <script>
-    const canvas = document.getElementById("spectrogram");
-    const ctx = canvas.getContext("2d");
-
-    const processBtn = document.getElementById("processBtn");
-    const saveBtn = document.getElementById("saveBtn");
-    const nextBtn = document.getElementById("nextBtn");
-    const prevBtn = document.getElementById("prevBtn");
-    const fileInput = document.getElementById("audioInput");
-    const statusText = document.getElementById("status");
-
-    let audioBuffer = null;
-    let pageIndex = 0;
-    const sliceDuration = 600; // 10 minutes in seconds
-    const canvasWidth = canvas.width;
-    const canvasHeight = canvas.height;
-    const fftSize = 512;
-    const hopSize = fftSize / 2;
-    const bins = fftSize / 2;
-
-    function setStatus(msg, isError = false) {
-      statusText.textContent = "Status: " + msg;
-      statusText.classList.toggle("error", isError);
-    }
-
-    function drawLabels(sampleRate) {
-      ctx.fillStyle = "white";
-      ctx.font = "12px sans-serif";
-      ctx.textAlign = "right";
-      ctx.textBaseline = "middle";
-      const nyquist = sampleRate / 2;
-
-      for (let y = 0; y <= 4; y++) {
-        const pos = (y / 4) * canvasHeight;
-        const freq = ((4 - y) / 4) * nyquist;
-        ctx.fillText(freq.toFixed(0) + " Hz", 58, pos);
-      }
-
-      ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      const timePerPixel = sliceDuration / canvasWidth;
-      for (let x = 0; x <= 10; x++) {
-        const px = 60 + x * ((canvasWidth - 60) / 10);
-        const seconds = pageIndex * sliceDuration + x * (sliceDuration / 10);
-        const label = (seconds / 60).toFixed(1) + " min";
-        ctx.fillText(label, px, canvasHeight - 12);
-      }
-    }
-
-    async function renderPage(index) {
-      if (!audioBuffer) return;
-
-      const data = audioBuffer.getChannelData(0);
-      const sampleRate = audioBuffer.sampleRate;
-      const startSample = Math.floor(index * sliceDuration * sampleRate);
-      const endSample = Math.min(startSample + (sliceDuration * sampleRate), data.length);
-
-      const frameCount = Math.floor((endSample - startSample - fftSize) / hopSize);
-      const pixels = Math.min(canvasWidth - 60, frameCount);
-      const fft = new FFT(fftSize);
-      const input = new Array(fftSize).fill(0);
-      const output = fft.createComplexArray();
-
-      ctx.fillStyle = "black";
-      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
-      for (let x = 0; x < pixels; x++) {
-        const offset = startSample + x * hopSize;
-        if (offset + fftSize >= data.length) break;
-
-        for (let i = 0; i < fftSize; i++) {
-          const sample = data[offset + i] || 0;
-          const window = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (fftSize - 1)));
-          input[i] = sample * window;
-        }
-
-        fft.realTransform(output, input);
-        fft.completeSpectrum(output);
-
-        for (let y = 0; y < bins && y < canvasHeight; y++) {
-          const re = output[2 * y];
-          const im = output[2 * y + 1];
-          const mag = Math.sqrt(re * re + im * im);
-          const dB = Math.log10(mag + 1) * 40;
-          const hue = Math.min(255, Math.floor(dB * 5));
-          ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
-          ctx.fillRect(x + 60, canvasHeight - 1 - y, 1, 1);
-        }
-
-        if (x % 100 === 0) await new Promise(r => requestAnimationFrame(r));
-      }
-
-      drawLabels(sampleRate);
-      saveBtn.disabled = false;
-      setStatus(`Showing page ${pageIndex + 1}`);
-    }
-
-    processBtn.addEventListener("click", async () => {
-      const file = fileInput.files[0];
-      if (!file) return setStatus("Please select an MP3 file first.", true);
-
-      processBtn.disabled = true;
-      setStatus("Loading and decoding...");
-
-      try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const buffer = await file.arrayBuffer();
-        audioBuffer = await audioCtx.decodeAudioData(buffer);
-        pageIndex = 0;
-
-        const totalSlices = Math.ceil(audioBuffer.duration / sliceDuration);
-        nextBtn.disabled = totalSlices <= 1;
-        prevBtn.disabled = true;
-
-        await renderPage(pageIndex);
-      } catch (err) {
-        console.error(err);
-        setStatus("Error decoding audio: " + err.message, true);
-      } finally {
-        processBtn.disabled = false;
-      }
-    });
-
-    nextBtn.addEventListener("click", async () => {
-      const totalSlices = Math.ceil(audioBuffer.duration / sliceDuration);
-      if (pageIndex < totalSlices - 1) {
-        pageIndex++;
-        prevBtn.disabled = false;
-        if (pageIndex === totalSlices - 1) nextBtn.disabled = true;
-        await renderPage(pageIndex);
-      }
-    });
-
-    prevBtn.addEventListener("click", async () => {
-      if (pageIndex > 0) {
-        pageIndex--;
-        nextBtn.disabled = false;
-        if (pageIndex === 0) prevBtn.disabled = true;
-        await renderPage(pageIndex);
-      }
-    });
-
-    saveBtn.addEventListener("click", () => {
-      const link = document.createElement("a");
-      link.download = `spectrogram_page_${pageIndex + 1}.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-    });
-
-    // Inlined FFT.js
+    // FFT.js (simplified and inlined)
     class FFT {
       constructor(size) {
         this.size = size;
@@ -266,6 +124,127 @@
         }
       }
     }
+
+    const canvas = document.getElementById('spectrogram');
+    const ctx = canvas.getContext('2d');
+    const processBtn = document.getElementById('processBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const fileInput = document.getElementById('audioInput');
+    const scaleSelect = document.getElementById('scaleSelect');
+    const statusText = document.getElementById('status');
+
+    function setStatus(msg, isError = false) {
+      statusText.textContent = 'Status: ' + msg;
+      statusText.classList.toggle('error', isError);
+    }
+
+    processBtn.addEventListener('click', async () => {
+      const file = fileInput.files[0];
+      if (!file) return setStatus("Please select an MP3 file first.", true);
+
+      const secondsPerPixel = parseFloat(scaleSelect.value);
+      const fftSize = 512;
+      const hopSize = fftSize / 2;
+      const bins = fftSize / 2;
+
+      const marginLeft = 60;
+      const marginBottom = 20;
+      const height = 256;
+      const width = 1024;
+      const totalWidth = width + marginLeft;
+      const totalHeight = height + marginBottom;
+      canvas.width = totalWidth;
+      canvas.height = totalHeight;
+
+      ctx.fillStyle = "black";
+      ctx.fillRect(0, 0, totalWidth, totalHeight);
+
+      processBtn.disabled = true;
+      saveBtn.disabled = true;
+      setStatus("Decoding audio...");
+
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const arrayBuffer = await file.arrayBuffer();
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        const data = audioBuffer.getChannelData(0);
+        const duration = audioBuffer.duration;
+        const sampleRate = audioBuffer.sampleRate;
+
+        const framesPerPixel = Math.floor((secondsPerPixel * sampleRate) / hopSize);
+        const maxPixels = width;
+        const fft = new FFT(fftSize);
+        const input = new Array(fftSize).fill(0);
+        const output = fft.createComplexArray();
+
+        setStatus("Generating spectrogram...");
+
+        for (let px = 0; px < maxPixels; px++) {
+          const frameIndex = px * framesPerPixel;
+          const offset = frameIndex * hopSize;
+
+          if (offset + fftSize >= data.length) break;
+
+          for (let i = 0; i < fftSize; i++) {
+            const sample = data[offset + i] || 0;
+            const win = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (fftSize - 1)));
+            input[i] = sample * win;
+          }
+
+          fft.realTransform(output, input);
+          fft.completeSpectrum(output);
+
+          for (let y = 0; y < bins && y < height; y++) {
+            const re = output[2 * y];
+            const im = output[2 * y + 1];
+            const mag = Math.sqrt(re * re + im * im);
+            const dB = Math.log10(mag + 1) * 40;
+            const hue = Math.min(255, Math.floor(dB * 5));
+            ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+            ctx.fillRect(px + marginLeft, height - 1 - y, 1, 1);
+          }
+
+          if (px % 100 === 0) await new Promise(r => requestAnimationFrame(r));
+        }
+
+        // Y-axis frequency labels
+        ctx.fillStyle = "white";
+        ctx.font = "12px sans-serif";
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        const nyquist = sampleRate / 2;
+        for (let y = 0; y <= 4; y++) {
+          const pos = (y / 4) * height;
+          const freq = ((4 - y) / 4) * nyquist;
+          ctx.fillText(freq.toFixed(0) + " Hz", marginLeft - 4, pos);
+        }
+
+        // X-axis time labels
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        const totalVisibleTime = secondsPerPixel * width;
+        for (let x = 0; x <= 10; x++) {
+          const pos = x * (width / 10);
+          const time = (x / 10) * totalVisibleTime;
+          ctx.fillText(time.toFixed(1) + "s", pos + marginLeft, height + 2);
+        }
+
+        setStatus("Done!");
+        saveBtn.disabled = false;
+      } catch (err) {
+        console.error(err);
+        setStatus("Error: " + err.message, true);
+      } finally {
+        processBtn.disabled = false;
+      }
+    });
+
+    saveBtn.addEventListener('click', () => {
+      const link = document.createElement('a');
+      link.download = 'spectrogram.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
   </script>
 </body>
 </html>
