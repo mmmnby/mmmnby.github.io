@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Live MP3 Spectrogram with Time Labels</title>
+  <style>
+    body {
+      background: #111;
+      color: white;
+      font-family: sans-serif;
+      text-align: center;
+    }
+    canvas {
+      background: black;
+      border: 1px solid #444;
+      display: block;
+      margin: 20px auto;
+    }
+    .controls {
+      margin: 10px;
+    }
+    button, select, input {
+      padding: 8px 12px;
+      font-size: 16px;
+      margin: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Live MP3 Spectrogram (Real-Time)</h1>
+
+  <div class="controls">
+    <input type="file" id="audioFile" accept=".mp3" />
+    <label for="speed">Speed:</label>
+    <select id="speed">
+      <option value="1">1×</option>
+      <option value="2">2×</option>
+      <option value="4">4×</option>
+      <option value="30">30×</option>
+      <option value="60">60×</option>
+      <option value="120">120×</option>
+    </select>
+    <button id="startBtn">Start</button>
+  </div>
+
+  <canvas id="spectrogram" width="1200" height="300"></canvas>
+
+  <script>
+    const canvas = document.getElementById("spectrogram");
+    const ctx = canvas.getContext("2d");
+
+    const fileInput = document.getElementById("audioFile");
+    const startBtn = document.getElementById("startBtn");
+    const speedSelect = document.getElementById("speed");
+
+    const height = canvas.height - 20;  // Reserve 20px for X-axis labels
+    const labelHeight = 20;
+    let drawX = 0;
+    let startTime = 0;
+    let playbackRate = 1;
+    let animationId;
+
+    startBtn.addEventListener("click", async () => {
+      const file = fileInput.files[0];
+      if (!file) {
+        alert("Please select an MP3 file.");
+        return;
+      }
+
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+
+      if (window.audio) {
+        window.audio.pause();
+        URL.revokeObjectURL(window.audio.src);
+      }
+
+      const blobURL = URL.createObjectURL(file);
+      const audio = new Audio(blobURL);
+      window.audio = audio;
+
+      playbackRate = parseFloat(speedSelect.value);
+      audio.playbackRate = playbackRate;
+      audio.crossOrigin = "anonymous";
+
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaElementSource(audio);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      source.connect(analyser);
+      analyser.connect(audioCtx.destination);
+
+      drawX = 0;
+      startTime = audioCtx.currentTime;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      audio.play();
+
+      function draw() {
+        analyser.getByteFrequencyData(dataArray);
+
+        for (let y = 0; y < bufferLength; y++) {
+          const value = dataArray[y];
+          const hue = value * 1.5;
+          ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+          ctx.fillRect(drawX, height - y, 1, 1);
+        }
+
+        // Draw time label every 50 pixels
+        if (drawX % 50 === 0) {
+          const elapsed = (audioCtx.currentTime - startTime) * playbackRate;
+          ctx.fillStyle = "black";
+          ctx.fillRect(drawX - 1, height, 50, labelHeight);
+
+          ctx.fillStyle = "white";
+          ctx.font = "12px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(elapsed.toFixed(1) + "s", drawX + 2, height + 12);
+        }
+
+        drawX = (drawX + 1) % canvas.width;
+
+        if (!audio.paused && !audio.ended) {
+          animationId = requestAnimationFrame(draw);
+        }
+      }
+
+      draw();
+    });
+  </script>
+
+</body>
+</html>
