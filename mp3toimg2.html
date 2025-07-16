@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Live MP3 Spectrogram with Time Labels</title>
+  <title>Live MP3 Spectrogram (Scrollable)</title>
   <style>
     body {
       background: #111;
@@ -28,7 +28,7 @@
 </head>
 <body>
 
-  <h1>Live MP3 Spectrogram (Real-Time)</h1>
+  <h1>Live MP3 Spectrogram</h1>
 
   <div class="controls">
     <input type="file" id="audioFile" accept=".mp3" />
@@ -42,9 +42,10 @@
       <option value="120">120×</option>
     </select>
     <button id="startBtn">Start</button>
+    <button id="saveBtn">Download PNG</button>
   </div>
 
-  <canvas id="spectrogram" width="1200" height="300"></canvas>
+  <canvas id="spectrogram" width="1600" height="300"></canvas>
 
   <script>
     const canvas = document.getElementById("spectrogram");
@@ -52,14 +53,23 @@
 
     const fileInput = document.getElementById("audioFile");
     const startBtn = document.getElementById("startBtn");
+    const saveBtn = document.getElementById("saveBtn");
     const speedSelect = document.getElementById("speed");
 
-    const height = canvas.height - 20;  // Reserve 20px for X-axis labels
     const labelHeight = 20;
+    const usableHeight = canvas.height - labelHeight;
+
     let drawX = 0;
-    let startTime = 0;
+    let scrollOffset = 0;
     let playbackRate = 1;
+    let startTime = 0;
     let animationId;
+
+    function formatTime(seconds) {
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60);
+      return `${m.toString().padStart(2, '0')}m${s.toString().padStart(2, '0')}s`;
+    }
 
     startBtn.addEventListener("click", async () => {
       const file = fileInput.files[0];
@@ -97,6 +107,7 @@
       analyser.connect(audioCtx.destination);
 
       drawX = 0;
+      scrollOffset = 0;
       startTime = audioCtx.currentTime;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -105,26 +116,35 @@
       function draw() {
         analyser.getByteFrequencyData(dataArray);
 
+        // Scroll canvas left by 1px
+        const imageData = ctx.getImageData(1, 0, canvas.width - 1, canvas.height);
+        ctx.putImageData(imageData, 0, 0);
+
+        // Clear rightmost column
+        ctx.clearRect(canvas.width - 1, 0, 1, canvas.height);
+
+        // Draw new column at far right
         for (let y = 0; y < bufferLength; y++) {
           const value = dataArray[y];
           const hue = value * 1.5;
           ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
-          ctx.fillRect(drawX, height - y, 1, 1);
+          ctx.fillRect(canvas.width - 1, usableHeight - y, 1, 1);
         }
 
         // Draw time label every 50 pixels
-        if (drawX % 50 === 0) {
+        scrollOffset++;
+        if (scrollOffset % 50 === 0) {
           const elapsed = (audioCtx.currentTime - startTime) * playbackRate;
+          const label = formatTime(elapsed);
+
           ctx.fillStyle = "black";
-          ctx.fillRect(drawX - 1, height, 50, labelHeight);
+          ctx.fillRect(canvas.width - 51, usableHeight, 50, labelHeight);
 
           ctx.fillStyle = "white";
           ctx.font = "12px sans-serif";
           ctx.textAlign = "center";
-          ctx.fillText(elapsed.toFixed(1) + "s", drawX + 2, height + 12);
+          ctx.fillText(label, canvas.width - 26, usableHeight + 14);
         }
-
-        drawX = (drawX + 1) % canvas.width;
 
         if (!audio.paused && !audio.ended) {
           animationId = requestAnimationFrame(draw);
@@ -132,6 +152,14 @@
       }
 
       draw();
+    });
+
+    saveBtn.addEventListener("click", () => {
+      const url = canvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "spectrogram.png";
+      a.click();
     });
   </script>
 
