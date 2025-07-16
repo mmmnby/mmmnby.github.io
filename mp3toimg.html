@@ -1,295 +1,382 @@
-<!-- [START OF FILE] -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>MP3 Spectrogram (Safe Decode)</title>
-  <style>
-    body {
-      background: #111;
-      color: #fff;
-      font-family: sans-serif;
-      padding: 20px;
-      text-align: center;
-    }
-    canvas {
-      display: block;
-      margin: 20px auto;
-      background: black;
-      border: 1px solid #444;
-    }
-    .controls {
-      margin: 20px;
-    }
-    select, button, input {
-      padding: 6px 12px;
-      font-size: 16px;
-      margin: 5px;
-    }
-    #status {
-      margin-top: 10px;
-      font-style: italic;
-      color: #ccc;
-    }
-    #status.error {
-      color: red;
-    }
-  </style>
+<meta charset="UTF-8" />
+<title>Chunked MP3 Spectrogram Viewer</title>
+<style>
+  body {
+    background: #111;
+    color: #eee;
+    font-family: sans-serif;
+    padding: 20px;
+    text-align: center;
+  }
+  canvas {
+    display: block;
+    margin: 20px auto;
+    background: black;
+    border: 1px solid #444;
+  }
+  .controls {
+    margin: 20px;
+  }
+  select, button, input {
+    padding: 6px 12px;
+    font-size: 16px;
+    margin: 5px;
+  }
+  #status {
+    margin-top: 10px;
+    font-style: italic;
+    color: #ccc;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  #status.error {
+    color: red;
+  }
+  #log {
+    font-family: monospace;
+    font-size: 12px;
+    color: #888;
+    max-height: 150px;
+    overflow-y: auto;
+    background: #222;
+    padding: 10px;
+    margin-top: 20px;
+    text-align: left;
+    white-space: pre-wrap;
+  }
+</style>
 </head>
 <body>
-  <h1>MP3 Spectrogram Viewer</h1>
+<h1>Chunked MP3 Spectrogram Viewer</h1>
 
-  <div class="controls">
-    <input type="file" id="fileInput" accept=".mp3" />
-    <select id="segmentSelect" disabled></select>
-    <button id="renderBtn" disabled>Render Segment</button>
-    <button id="saveBtn" disabled>Save PNG</button>
-    <div id="status">Select an MP3 file.</div>
-  </div>
+<div class="controls">
+  <input type="file" id="fileInput" accept=".mp3" />
+  <br/>
+  <button id="startBtn" disabled>Start Processing Chunks</button>
+  <select id="segmentSelect" disabled></select>
+  <button id="renderBtn" disabled>Render Selected Segment</button>
+  <button id="saveBtn" disabled>Save Spectrogram PNG</button>
+  <div id="status">Select a large MP3 file (~100MB) to start.</div>
+</div>
 
-  <canvas id="canvas" width="1000" height="256"></canvas>
+<canvas id="canvas" width="1000" height="256"></canvas>
 
-  <script>
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
-    const fileInput = document.getElementById("fileInput");
-    const segmentSelect = document.getElementById("segmentSelect");
-    const renderBtn = document.getElementById("renderBtn");
-    const saveBtn = document.getElementById("saveBtn");
-    const status = document.getElementById("status");
+<div id="log"></div>
 
-    let decodedBuffer = null;
-    let sampleRate = 8000;
-    const segmentDurationSec = 600; // 10 minutes
-    const fftSize = 512;
-    const hopSize = fftSize / 2;
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const fileInput = document.getElementById("fileInput");
+const startBtn = document.getElementById("startBtn");
+const segmentSelect = document.getElementById("segmentSelect");
+const renderBtn = document.getElementById("renderBtn");
+const saveBtn = document.getElementById("saveBtn");
+const status = document.getElementById("status");
+const log = document.getElementById("log");
 
-    function setStatus(msg, isError = false) {
-      status.textContent = "Status: " + msg;
-      status.classList.toggle("error", isError);
-      console.log("[STATUS] " + msg);
+let file = null;
+let audioCtx = null;
+const sampleRate = 8000;
+const chunkSizeBytes = 10 * 1024 * 1024; // ~10MB chunks
+const fftSize = 512;
+const hopSize = fftSize / 2;
+
+let decodedSegments = []; // {buffer: Float32Array, sampleRate, startByte, endByte, segmentIndex}
+let currentSegmentIndex = -1;
+
+function logMsg(msg, isError = false) {
+  const time = new Date().toLocaleTimeString();
+  const line = `[${time}] ${msg}\n`;
+  log.textContent += line;
+  log.scrollTop = log.scrollHeight;
+  if (isError) {
+    status.textContent = "Error: " + msg;
+    status.classList.add("error");
+  }
+}
+
+function setStatus(msg, isError = false) {
+  status.textContent = msg;
+  status.classList.toggle("error", isError);
+  console.log(msg);
+}
+
+function downsampleBuffer(buffer, targetRate = 8000) {
+  const input = buffer.getChannelData(0);
+  const ratio = buffer.sampleRate / targetRate;
+  const length = Math.floor(input.length / ratio);
+  const output = new Float32Array(length);
+  for (let i = 0; i < length; i++) {
+    output[i] = input[Math.floor(i * ratio)];
+  }
+  return output;
+}
+
+function drawSpectrogram(segment, rate) {
+  try {
+    const fft = new FFT(fftSize);
+    const bins = fftSize / 2;
+    const steps = Math.floor((segment.length - fftSize) / hopSize);
+    const pixels = Math.min(canvas.width - 60, steps);
+
+    ctx.fillStyle = "black";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const win = new Float32Array(fftSize);
+    for (let i = 0; i < fftSize; i++) {
+      win[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (fftSize - 1)));
     }
 
-    function downsampleBuffer(buffer, targetRate = 8000) {
-      const input = buffer.getChannelData(0);
-      const ratio = buffer.sampleRate / targetRate;
-      const length = Math.floor(input.length / ratio);
-      const output = new Float32Array(length);
-      for (let i = 0; i < length; i++) {
-        output[i] = input[Math.floor(i * ratio)];
-      }
-      return output;
-    }
-
-    function drawSpectrogram(segment, rate) {
-      try {
-        const fft = new FFT(fftSize);
-        const bins = fftSize / 2;
-        const steps = Math.floor((segment.length - fftSize) / hopSize);
-        const pixels = Math.min(canvas.width - 60, steps);
-
-        ctx.fillStyle = "black";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        const win = new Float32Array(fftSize);
-        for (let i = 0; i < fftSize; i++) {
-          win[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (fftSize - 1)));
-        }
-
-        const out = fft.createComplexArray();
-        for (let x = 0; x < pixels; x++) {
-          const start = x * hopSize;
-          const frame = new Float32Array(fftSize);
-          for (let i = 0; i < fftSize; i++) {
-            frame[i] = (segment[start + i] || 0) * win[i];
-          }
-
-          fft.realTransform(out, frame);
-          fft.completeSpectrum(out);
-
-          for (let y = 0; y < bins && y < canvas.height; y++) {
-            const re = out[2 * y];
-            const im = out[2 * y + 1];
-            const mag = Math.sqrt(re * re + im * im);
-            const dB = Math.log10(mag + 1) * 40;
-            const hue = Math.min(255, Math.floor(dB * 5));
-            ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
-            ctx.fillRect(x + 60, canvas.height - y - 1, 1, 1);
-          }
-        }
-
-        drawLabels(rate);
-      } catch (err) {
-        setStatus("Error rendering spectrogram: " + err.message, true);
-        console.error(err);
-      }
-    }
-
-    function drawLabels(rate) {
-      ctx.fillStyle = "white";
-      ctx.font = "12px sans-serif";
-      ctx.textAlign = "right";
-      ctx.textBaseline = "middle";
-
-      const nyquist = rate / 2;
-      for (let i = 0; i <= 4; i++) {
-        const y = (i / 4) * canvas.height;
-        const freq = ((4 - i) / 4) * nyquist;
-        ctx.fillText(freq.toFixed(0) + " Hz", 55, y);
+    const out = fft.createComplexArray();
+    for (let x = 0; x < pixels; x++) {
+      const start = x * hopSize;
+      const frame = new Float32Array(fftSize);
+      for (let i = 0; i < fftSize; i++) {
+        frame[i] = (segment[start + i] || 0) * win[i];
       }
 
-      ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      for (let i = 0; i <= 10; i++) {
-        const x = 60 + (i / 10) * (canvas.width - 60);
-        ctx.fillText(i + " min", x, canvas.height - 12);
+      fft.realTransform(out, frame);
+      fft.completeSpectrum(out);
+
+      for (let y = 0; y < bins && y < canvas.height; y++) {
+        const re = out[2 * y];
+        const im = out[2 * y + 1];
+        const mag = Math.sqrt(re * re + im * im);
+        const dB = Math.log10(mag + 1) * 40;
+        const hue = Math.min(255, Math.floor(dB * 5));
+        ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+        ctx.fillRect(x + 60, canvas.height - y - 1, 1, 1);
       }
     }
 
-    renderBtn.addEventListener("click", () => {
-      if (!decodedBuffer) {
-        setStatus("No decoded audio available", true);
-        return;
+    drawLabels(rate);
+  } catch (err) {
+    setStatus("Error rendering spectrogram: " + err.message, true);
+    logMsg("Error rendering spectrogram: " + err.message, true);
+    console.error(err);
+  }
+}
+
+function drawLabels(rate) {
+  ctx.fillStyle = "white";
+  ctx.font = "12px sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+
+  const nyquist = rate / 2;
+  for (let i = 0; i <= 4; i++) {
+    const y = (i / 4) * canvas.height;
+    const freq = ((4 - i) / 4) * nyquist;
+    ctx.fillText(freq.toFixed(0) + " Hz", 55, y);
+  }
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  for (let i = 0; i <= 10; i++) {
+    const x = 60 + (i / 10) * (canvas.width - 60);
+    ctx.fillText(i + " min", x, canvas.height - 12);
+  }
+}
+
+renderBtn.addEventListener("click", () => {
+  if (currentSegmentIndex < 0 || currentSegmentIndex >= decodedSegments.length) {
+    setStatus("No segment selected", true);
+    return;
+  }
+
+  const segmentData = decodedSegments[currentSegmentIndex];
+  drawSpectrogram(segmentData.buffer, segmentData.sampleRate);
+  setStatus(`Rendered segment ${currentSegmentIndex + 1} (bytes ${segmentData.startByte}–${segmentData.endByte})`);
+  saveBtn.disabled = false;
+});
+
+saveBtn.addEventListener("click", () => {
+  const link = document.createElement("a");
+  link.download = "spectrogram.png";
+  link.href = canvas.toDataURL("image/png");
+  link.click();
+});
+
+segmentSelect.addEventListener("change", () => {
+  currentSegmentIndex = parseInt(segmentSelect.value);
+  renderBtn.disabled = false;
+  saveBtn.disabled = true;
+  setStatus(`Selected segment ${currentSegmentIndex + 1}. Click "Render Selected Segment" to display.`);
+});
+
+fileInput.addEventListener("change", () => {
+  file = fileInput.files[0];
+  if (!file) {
+    setStatus("No file selected");
+    startBtn.disabled = true;
+    segmentSelect.disabled = true;
+    renderBtn.disabled = true;
+    saveBtn.disabled = true;
+    return;
+  }
+  setStatus(`Selected file "${file.name}" size: ${(file.size / (1024*1024)).toFixed(2)} MB`);
+  startBtn.disabled = false;
+  segmentSelect.disabled = true;
+  renderBtn.disabled = true;
+  saveBtn.disabled = true;
+  decodedSegments = [];
+  segmentSelect.innerHTML = "";
+  currentSegmentIndex = -1;
+  log.textContent = "";
+});
+
+startBtn.addEventListener("click", async () => {
+  if (!file) return;
+  startBtn.disabled = true;
+  fileInput.disabled = true;
+  setStatus("Starting chunked decode...");
+  decodedSegments = [];
+  segmentSelect.innerHTML = "";
+  currentSegmentIndex = -1;
+
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+  } catch (e) {
+    setStatus("Web Audio API not supported.", true);
+    return;
+  }
+
+  const totalSize = file.size;
+  let offset = 0;
+  let segmentIndex = 0;
+
+  while (offset < totalSize) {
+    const end = Math.min(offset + chunkSizeBytes, totalSize);
+    setStatus(`Decoding chunk ${segmentIndex + 1} bytes ${offset}–${end}...`);
+    logMsg(`Decoding chunk ${segmentIndex + 1} bytes ${offset}–${end}...`);
+
+    // Slice the chunk blob
+    const chunkBlob = file.slice(offset, end);
+
+    // Convert blob to ArrayBuffer
+    const arrayBuffer = await chunkBlob.arrayBuffer();
+
+    try {
+      const rawBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      // Downsample to sampleRate (8000Hz)
+      const downsampled = downsampleBuffer(rawBuffer, sampleRate);
+
+      decodedSegments.push({
+        buffer: downsampled,
+        sampleRate,
+        startByte: offset,
+        endByte: end,
+        segmentIndex
+      });
+
+      logMsg(`Chunk ${segmentIndex + 1} decoded successfully: approx ${(downsampled.length / sampleRate / 60).toFixed(2)} min`);
+    } catch (decodeError) {
+      logMsg(`Chunk ${segmentIndex + 1} decode failed: ${decodeError.message}`, true);
+      // We skip this chunk but continue decoding the next chunk
+    }
+
+    offset = end;
+    segmentIndex++;
+  }
+
+  if (decodedSegments.length === 0) {
+    setStatus("No chunks decoded successfully. File may be too large or incompatible.", true);
+    fileInput.disabled = false;
+    startBtn.disabled = false;
+    return;
+  }
+
+  // Populate segment select dropdown
+  segmentSelect.innerHTML = "";
+  decodedSegments.forEach((seg, idx) => {
+    const option = document.createElement("option");
+    const approxDurationSec = seg.buffer.length / seg.sampleRate;
+    option.value = idx;
+    option.textContent = `Segment ${idx + 1} (bytes ${seg.startByte}–${seg.endByte}, ~${(approxDurationSec / 60).toFixed(2)} min)`;
+    segmentSelect.appendChild(option);
+  });
+
+  segmentSelect.disabled = false;
+  renderBtn.disabled = false;
+  saveBtn.disabled = true;
+  currentSegmentIndex = 0;
+  setStatus(`Finished chunked decoding: ${decodedSegments.length} segments ready.`);
+  fileInput.disabled = false;
+  startBtn.disabled = false;
+});
+
+
+// Simple FFT implementation (same as before)
+class FFT {
+  constructor(size) {
+    this.size = size;
+    this._csize = size << 1;
+    this._table = new Float64Array(size * 2);
+    for (let i = 0; i < size; i++) {
+      const angle = (Math.PI * i) / size;
+      this._table[i * 2] = Math.cos(angle);
+      this._table[i * 2 + 1] = -Math.sin(angle);
+    }
+    this._rev = new Uint32Array(size);
+    const log2 = Math.log2(size);
+    for (let i = 0; i < size; i++) {
+      let x = i,
+        y = 0;
+      for (let j = 0; j < log2; j++) {
+        y <<= 1;
+        y |= x & 1;
+        x >>= 1;
       }
+      this._rev[i] = y;
+    }
+  }
 
-      const min = parseInt(segmentSelect.value);
-      const start = min * 60 * sampleRate;
-      const end = start + segmentDurationSec * sampleRate;
+  createComplexArray() {
+    return new Float64Array(this._csize);
+  }
 
-      const segment = decodedBuffer.subarray(start, Math.min(end, decodedBuffer.length));
-      drawSpectrogram(segment, sampleRate);
-      setStatus(`Rendered ${min}–${min + 10} min`);
-      saveBtn.disabled = false;
-    });
+  realTransform(out, data) {
+    const size = this.size;
+    const rev = this._rev;
+    const table = this._table;
+    for (let i = 0; i < size; i++) {
+      out[i * 2] = data[rev[i]];
+      out[i * 2 + 1] = 0;
+    }
 
-    saveBtn.addEventListener("click", () => {
-      const link = document.createElement("a");
-      link.download = "spectrogram.png";
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-    });
-
-    fileInput.addEventListener("change", async () => {
-      const file = fileInput.files[0];
-      if (!file) return;
-
-      setStatus("Reading file...");
-
-      try {
-        const arrayBuffer = await file.arrayBuffer();
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-        setStatus("Decoding audio...");
-
-        audioCtx.decodeAudioData(arrayBuffer, rawBuffer => {
-          try {
-            const mono = audioCtx.createBuffer(1, rawBuffer.length, rawBuffer.sampleRate);
-            const input = rawBuffer.numberOfChannels > 1
-              ? rawBuffer.getChannelData(0).map((v, i) =>
-                  (v + rawBuffer.getChannelData(1)[i]) / 2)
-              : rawBuffer.getChannelData(0);
-
-            mono.copyToChannel(Float32Array.from(input), 0);
-
-            decodedBuffer = downsampleBuffer(mono, sampleRate);
-
-            const durationMin = Math.floor(decodedBuffer.length / sampleRate / 60);
-            if (durationMin === 0) {
-              throw new Error("Audio too short");
-            }
-
-            segmentSelect.innerHTML = "";
-            for (let i = 0; i < durationMin; i += 10) {
-              const opt = document.createElement("option");
-              opt.value = i;
-              opt.textContent = `${i}–${i + 10} min`;
-              segmentSelect.appendChild(opt);
-            }
-
-            segmentSelect.disabled = false;
-            renderBtn.disabled = false;
-            setStatus("Ready. Select a segment.");
-          } catch (err) {
-            console.error("Post-decode processing failed", err);
-            setStatus("Error processing decoded audio: " + err.message, true);
-          }
-        }, decodeErr => {
-          console.error("decodeAudioData failed:", decodeErr);
-          setStatus("Failed to decode MP3. Try a smaller file.", true);
-        });
-      } catch (err) {
-        console.error("File read or decode error:", err);
-        setStatus("Failed to load or decode file: " + err.message, true);
-      }
-    });
-
-    // Simple inlined FFT class (same as before)
-    class FFT {
-      constructor(size) {
-        this.size = size;
-        this._csize = size << 1;
-        this._table = new Float64Array(size * 2);
-        for (let i = 0; i < size; i++) {
-          const angle = (Math.PI * i) / size;
-          this._table[i * 2] = Math.cos(angle);
-          this._table[i * 2 + 1] = -Math.sin(angle);
-        }
-        this._rev = new Uint32Array(size);
-        const log2 = Math.log2(size);
-        for (let i = 0; i < size; i++) {
-          this._rev[i] = this._reverseBits(i, log2);
-        }
-      }
-      _reverseBits(x, bits) {
-        let y = 0;
-        for (let i = 0; i < bits; i++) {
-          y = (y << 1) | (x & 1);
-          x >>>= 1;
-        }
-        return y;
-      }
-      createComplexArray() {
-        return new Float64Array(this._csize);
-      }
-      realTransform(out, data) {
-        const size = this.size;
-        for (let i = 0; i < size; i++) {
-          out[2 * this._rev[i]] = data[i];
-          out[2 * this._rev[i] + 1] = 0;
-        }
-        for (let step = 1; step < size; step <<= 1) {
-          const jump = step << 1;
-          const delta = size / jump;
-          for (let i = 0; i < size; i += jump) {
-            for (let j = 0; j < step; j++) {
-              const idx = j * delta;
-              const tRe = this._table[2 * idx];
-              const tIm = this._table[2 * idx + 1];
-              const i0 = (i + j) << 1;
-              const i1 = (i + j + step) << 1;
-              const re0 = out[i0];
-              const im0 = out[i0 + 1];
-              const re1 = out[i1];
-              const im1 = out[i1 + 1];
-              const tre = re1 * tRe - im1 * tIm;
-              const tim = re1 * tIm + im1 * tRe;
-              out[i1] = re0 - tre;
-              out[i1 + 1] = im0 - tim;
-              out[i0] = re0 + tre;
-              out[i0 + 1] = im0 + tim;
-            }
-          }
-        }
-      }
-      completeSpectrum(out) {
-        const size = this.size;
-        for (let i = 1; i < size / 2; i++) {
-          out[(size - i) * 2] = out[i * 2];
-          out[(size - i) * 2 + 1] = -out[i * 2 + 1];
+    for (let step = 1; step < size; step <<= 1) {
+      const jump = step << 1;
+      for (let group = 0; group < step; group++) {
+        const wr = table[group * (size / jump) * 2];
+        const wi = table[group * (size / jump) * 2 + 1];
+        for (let pair = group; pair < size; pair += jump) {
+          const match = pair + step;
+          const re = out[match * 2];
+          const im = out[match * 2 + 1];
+          const tr = wr * re - wi * im;
+          const ti = wr * im + wi * re;
+          out[match * 2] = out[pair * 2] - tr;
+          out[match * 2 + 1] = out[pair * 2 + 1] - ti;
+          out[pair * 2] += tr;
+          out[pair * 2 + 1] += ti;
         }
       }
     }
-  </script>
+  }
+
+  completeSpectrum(out) {
+    const size = this.size;
+    for (let i = size; i < this._csize; i++) {
+      out[i] = 0;
+    }
+  }
+}
+</script>
 </body>
 </html>
-<!-- [END OF FILE] -->
