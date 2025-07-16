@@ -1,35 +1,37 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Growing MP3 Spectrogram</title>
+  <meta charset="UTF-8">
+  <title>Scrollable Spectrogram Viewer</title>
   <style>
     body {
       background: #111;
       color: white;
       font-family: sans-serif;
       margin: 0;
-      overflow-x: auto;
-    }
-    canvas {
-      background: black;
-      display: block;
-      margin: 20px;
-      border: 1px solid #444;
+      padding: 0;
     }
     .controls {
-      position: fixed;
-      top: 10px;
-      left: 10px;
-      background: #222;
       padding: 10px;
-      border-radius: 6px;
-      z-index: 100;
+      text-align: center;
+      background: #222;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    canvas {
+      display: block;
+    }
+    #container {
+      width: 100vw;
+      height: 320px;
+      overflow-x: auto;
+      border-top: 1px solid #444;
     }
     button, select, input {
-      margin: 6px;
-      padding: 8px;
-      font-size: 14px;
+      margin: 8px;
+      padding: 6px 12px;
+      font-size: 16px;
     }
   </style>
 </head>
@@ -51,7 +53,9 @@
     <button id="saveBtn">Download PNG</button>
   </div>
 
-  <canvas id="spectrogram" height="300"></canvas>
+  <div id="container">
+    <canvas id="spectrogram" height="300"></canvas>
+  </div>
 
   <script>
     const canvas = document.getElementById("spectrogram");
@@ -63,15 +67,17 @@
     const saveBtn = document.getElementById("saveBtn");
     const speedSelect = document.getElementById("speed");
 
+    const container = document.getElementById("container");
+
     const labelHeight = 20;
     const usableHeight = canvas.height - labelHeight;
 
-    let audio, audioCtx, analyser, dataArray;
-    let playbackRate = 1;
-    let isPaused = false;
+    let analyser, dataArray, audioCtx, audio;
     let drawX = 0;
-    let startTime = 0;
+    let playbackRate = 1;
     let animationId;
+    let isPaused = false;
+    let startTime = 0;
 
     function formatTime(seconds) {
       const m = Math.floor(seconds / 60);
@@ -79,60 +85,50 @@
       return `${m.toString().padStart(2, '0')}m${s.toString().padStart(2, '0')}s`;
     }
 
-    function expandCanvasWidth() {
-      const oldCanvas = canvas;
-      const oldCtx = ctx;
-      const oldWidth = oldCanvas.width;
-
-      // Grow canvas by 1000px when needed
-      if (drawX >= oldWidth) {
-        const newWidth = oldWidth + 1000;
-        const imageData = oldCtx.getImageData(0, 0, oldWidth, canvas.height);
-
-        canvas.width = newWidth;
-        ctx.putImageData(imageData, 0, 0);
+    function ensureCanvasWidth(minWidth) {
+      if (canvas.width < minWidth) {
+        const old = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        canvas.width = minWidth;
+        ctx.putImageData(old, 0, 0);
       }
     }
 
     function drawSpectrogram() {
-      if (!audio || audio.paused || audio.ended || isPaused) {
-        return;
-      }
+      if (!audio || audio.paused || audio.ended || isPaused) return;
 
       analyser.getByteFrequencyData(dataArray);
 
-      expandCanvasWidth();
+      // Expand canvas as needed
+      drawX++;
+      ensureCanvasWidth(drawX + 2);
 
-      // Draw frequency data
-      for (let y = 0; y < dataArray.length; y++) {
+      for (let y = 0; y < analyser.frequencyBinCount; y++) {
         const value = dataArray[y];
         const hue = value * 1.5;
         ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
         ctx.fillRect(drawX, usableHeight - y, 1, 1);
       }
 
-      // Draw time label every 50 pixels
       if (drawX % 50 === 0) {
         const elapsed = (audioCtx.currentTime - startTime) * playbackRate;
         const label = formatTime(elapsed);
-
         ctx.fillStyle = "black";
-        ctx.fillRect(drawX, usableHeight, 50, labelHeight);
-
+        ctx.fillRect(drawX - 25, usableHeight, 50, labelHeight);
         ctx.fillStyle = "white";
         ctx.font = "12px sans-serif";
-        ctx.textAlign = "left";
-        ctx.fillText(label, drawX + 2, usableHeight + 14);
+        ctx.textAlign = "center";
+        ctx.fillText(label, drawX, usableHeight + 14);
       }
 
-      drawX++;
+      container.scrollLeft = canvas.width; // Optional: auto-scroll right
+
       animationId = requestAnimationFrame(drawSpectrogram);
     }
 
     startBtn.addEventListener("click", async () => {
       const file = fileInput.files[0];
       if (!file) {
-        alert("Please select an MP3 file.");
+        alert("Select an MP3 file");
         return;
       }
 
@@ -141,6 +137,10 @@
         audio.pause();
         URL.revokeObjectURL(audio.src);
       }
+
+      drawX = 0;
+      canvas.width = 1000; // Initial width
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const blobURL = URL.createObjectURL(file);
       audio = new Audio(blobURL);
@@ -157,14 +157,10 @@
       source.connect(analyser);
       analyser.connect(audioCtx.destination);
 
-      // Reset state
-      canvas.width = 1000;
-      drawX = 0;
-      isPaused = false;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      pauseBtn.textContent = "Pause";
-      pauseBtn.disabled = false;
       startTime = audioCtx.currentTime;
+      isPaused = false;
+      pauseBtn.disabled = false;
+      pauseBtn.textContent = "Pause";
 
       audio.play();
       drawSpectrogram();
@@ -172,16 +168,14 @@
 
     pauseBtn.addEventListener("click", () => {
       if (!audio) return;
+      isPaused = !isPaused;
 
-      if (!isPaused) {
-        isPaused = true;
+      if (isPaused) {
         audio.pause();
         cancelAnimationFrame(animationId);
         pauseBtn.textContent = "Resume";
       } else {
-        isPaused = false;
         audio.play();
-        startTime = audioCtx.currentTime - (audio.currentTime / playbackRate);
         drawSpectrogram();
         pauseBtn.textContent = "Pause";
       }
