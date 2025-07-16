@@ -2,19 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Spectrogram with Time Ticks</title>
+  <title>Spectrogram with Labels, Ticks, and Navigation</title>
   <style>
     body {
       background: #111;
       color: white;
       font-family: sans-serif;
+      text-align: center;
       margin: 0;
       padding: 0;
-      text-align: center;
     }
 
-    .controls, .post-controls {
-      padding: 10px;
+    .controls, .info, .extra-controls {
+      margin: 10px;
     }
 
     button, select, input {
@@ -34,21 +34,11 @@
       display: block;
       margin: 10px 0;
     }
-
-    #info {
-      font-size: 14px;
-      margin-top: 5px;
-      color: #ccc;
-    }
-
-    .post-controls {
-      display: none;
-    }
   </style>
 </head>
 <body>
 
-  <h1>Spectrogram (Wrapped, with Ticks)</h1>
+  <h1>MP3 Spectrogram Viewer</h1>
 
   <div class="controls">
     <input type="file" id="audioFile" accept=".mp3" />
@@ -64,15 +54,17 @@
     <button id="startBtn">Start</button>
     <button id="pauseBtn" disabled>Pause</button>
     <button id="saveBtn">Download</button>
-    <div id="info"></div>
   </div>
+
+  <div class="info" id="fileInfo">No file loaded</div>
+  <div class="info" id="masterCounter">Time: 0s</div>
 
   <div class="canvas-container" id="canvasContainer"></div>
 
-  <div class="post-controls" id="postControls">
-    <button id="back15">← 15s</button>
-    <button id="togglePlay">Play/Pause</button>
-    <button id="forward15">15s →</button>
+  <div class="extra-controls" id="navButtons" style="display:none;">
+    <button onclick="seekAudio(-15)">← 15s</button>
+    <button onclick="toggleAudio()">Play/Pause</button>
+    <button onclick="seekAudio(15)">15s →</button>
   </div>
 
   <script>
@@ -81,27 +73,25 @@
     const startBtn = document.getElementById("startBtn");
     const pauseBtn = document.getElementById("pauseBtn");
     const saveBtn = document.getElementById("saveBtn");
-    const postControls = document.getElementById("postControls");
-    const back15 = document.getElementById("back15");
-    const forward15 = document.getElementById("forward15");
-    const togglePlay = document.getElementById("togglePlay");
-    const info = document.getElementById("info");
     const speedSelect = document.getElementById("speed");
+    const fileInfo = document.getElementById("fileInfo");
+    const masterCounterDisplay = document.getElementById("masterCounter");
+    const navButtons = document.getElementById("navButtons");
 
     const canvasWidth = window.innerWidth;
-    const canvasHeight = 320;
+    const canvasHeight = 340;
     const tickHeight = 20;
     const labelHeight = 20;
-    const usableHeight = canvasHeight - tickHeight - labelHeight;
+    const usableHeight = canvasHeight - labelHeight - tickHeight;
 
     let playbackRate = 1;
     let audio, audioCtx, analyser, dataArray;
     let currentCanvas, ctx;
     let drawX = 0;
+    let masterCounter = 0;
+    let totalDuration = 0;
     let isPaused = false;
     let animationId;
-    let totalDuration = 0;
-    let source;
 
     function createNewCanvas() {
       const canvas = document.createElement("canvas");
@@ -114,10 +104,10 @@
     }
 
     function formatTime(seconds) {
-      const hrs = Math.floor(seconds / 3600);
-      const mins = Math.floor((seconds % 3600) / 60);
-      const secs = Math.floor(seconds % 60);
-      return `${hrs}h${mins}m${secs}s`;
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      return `${h}h${m}m${s}s`;
     }
 
     function drawSpectrogram() {
@@ -132,45 +122,59 @@
         ctx.fillRect(drawX, usableHeight - y, 1, 1);
       }
 
-      const masterTime = audio.currentTime;
-
       // Tick marks
-      if (Math.floor(masterTime) % 60 === 0) {
-        ctx.fillStyle = "white";
-        ctx.fillRect(drawX, usableHeight, 2, tickHeight);
-      }
-      if (Math.floor(masterTime) % 900 === 0) {
-        ctx.fillStyle = "white";
-        ctx.fillRect(drawX, usableHeight, 2, tickHeight + 5);
+      if (masterCounter % 60 === 0) {
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = (masterCounter % 900 === 0) ? 2 : 1;
+        ctx.beginPath();
+        ctx.moveTo(drawX, usableHeight);
+        ctx.lineTo(drawX, usableHeight + tickHeight);
+        ctx.stroke();
       }
 
       // Time label every 100px
       if (drawX % 100 === 0) {
-        const label = formatTime(masterTime);
+        const label = formatTime(masterCounter);
         ctx.fillStyle = "black";
         ctx.fillRect(drawX - 25, usableHeight + tickHeight, 50, labelHeight);
         ctx.fillStyle = "white";
         ctx.font = "12px sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(label, drawX, usableHeight + tickHeight + 15);
+        ctx.fillText(label, drawX, usableHeight + tickHeight + 14);
       }
 
-      drawX++;
+      masterCounter++;
+      masterCounterDisplay.textContent = `Time: ${formatTime(masterCounter)}`;
 
-      // Wrap to new canvas row
+      drawX++;
       if (drawX >= canvasWidth) {
         createNewCanvas();
       }
 
-      info.textContent = `Time: ${formatTime(masterTime)} / ${formatTime(totalDuration)}`;
-
-      if (masterTime >= totalDuration) {
+      // If drawing complete
+      if (masterCounter >= Math.floor(totalDuration)) {
         cancelAnimationFrame(animationId);
-        postControls.style.display = "block";
+        navButtons.style.display = "block";
         return;
       }
 
       animationId = requestAnimationFrame(drawSpectrogram);
+    }
+
+    function seekAudio(offset) {
+      if (audio) {
+        audio.currentTime = Math.max(0, audio.currentTime + offset);
+      }
+    }
+
+    function toggleAudio() {
+      if (audio) {
+        if (audio.paused) {
+          audio.play();
+        } else {
+          audio.pause();
+        }
+      }
     }
 
     startBtn.addEventListener("click", async () => {
@@ -187,29 +191,31 @@
       }
 
       container.innerHTML = "";
-      postControls.style.display = "none";
       createNewCanvas();
+      navButtons.style.display = "none";
+      masterCounter = 0;
+      drawX = 0;
 
       const blobURL = URL.createObjectURL(file);
       audio = new Audio(blobURL);
       audio.crossOrigin = "anonymous";
-
-      audio.onloadedmetadata = () => {
-        totalDuration = audio.duration;
-        info.textContent = `Loaded: ${file.name} — Duration: ${formatTime(totalDuration)}`;
-      };
-
       playbackRate = parseFloat(speedSelect.value);
       audio.playbackRate = playbackRate;
 
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      source = audioCtx.createMediaElementSource(audio);
+      const source = audioCtx.createMediaElementSource(audio);
       analyser = audioCtx.createAnalyser();
       analyser.fftSize = 512;
       dataArray = new Uint8Array(analyser.frequencyBinCount);
 
       source.connect(analyser);
       analyser.connect(audioCtx.destination);
+
+      // Wait for metadata
+      await audio.play();
+      audio.pause();
+      totalDuration = audio.duration;
+      fileInfo.textContent = `Loaded: ${file.name}, Duration: ${formatTime(totalDuration)}`;
 
       pauseBtn.disabled = false;
       pauseBtn.textContent = "Pause";
@@ -221,6 +227,7 @@
 
     pauseBtn.addEventListener("click", () => {
       if (!audio) return;
+
       isPaused = !isPaused;
       pauseBtn.textContent = isPaused ? "Resume" : "Pause";
 
@@ -251,29 +258,6 @@
       a.href = url;
       a.download = "spectrogram.png";
       a.click();
-    });
-
-    togglePlay.addEventListener("click", () => {
-      if (!audio) return;
-      if (audio.paused) {
-        audio.play();
-        drawSpectrogram();
-      } else {
-        audio.pause();
-        cancelAnimationFrame(animationId);
-      }
-    });
-
-    back15.addEventListener("click", () => {
-      if (audio) {
-        audio.currentTime = Math.max(0, audio.currentTime - 15);
-      }
-    });
-
-    forward15.addEventListener("click", () => {
-      if (audio) {
-        audio.currentTime = Math.min(totalDuration, audio.currentTime + 15);
-      }
     });
   </script>
 </body>
