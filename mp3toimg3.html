@@ -1,25 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>MP3 Spectrogram (Wrapped)</title>
+  <meta charset="UTF-8" />
+  <title>Advanced Spectrogram</title>
   <style>
     body {
-      margin: 0;
       background: #111;
       color: white;
       font-family: sans-serif;
+      margin: 0;
+      padding: 0;
       text-align: center;
     }
 
-    .controls, .status, .nav-buttons {
-      padding: 12px;
+    .controls {
+      padding: 10px;
     }
 
     button, select, input {
+      padding: 8px 12px;
       font-size: 16px;
       margin: 6px;
-      padding: 8px 12px;
+    }
+
+    #status {
+      margin: 10px;
+      font-size: 16px;
     }
 
     .canvas-container {
@@ -30,18 +36,24 @@
 
     canvas {
       background: black;
-      margin: 10px 0;
       display: block;
+      margin: 10px 0;
     }
 
-    .hidden {
+    .post-controls {
       display: none;
+      margin: 20px;
+    }
+
+    .tick {
+      width: 2px;
+      background: white;
     }
   </style>
 </head>
 <body>
 
-  <h1>MP3 Spectrogram Viewer</h1>
+  <h1>MP3 Spectrogram</h1>
 
   <div class="controls">
     <input type="file" id="audioFile" accept=".mp3" />
@@ -59,56 +71,48 @@
     <button id="saveBtn">Download</button>
   </div>
 
-  <div class="status">
-    <div id="fileInfo">No file loaded</div>
-    <div id="progress">Progress: 0s</div>
-  </div>
+  <div id="status"></div>
 
   <div class="canvas-container" id="canvasContainer"></div>
 
-  <div class="nav-buttons hidden" id="navButtons">
+  <div class="post-controls" id="postControls">
     <button id="back15">← 15s</button>
-    <button id="playPause">Pause</button>
+    <button id="togglePlay">Play</button>
     <button id="forward15">15s →</button>
   </div>
 
   <script>
+    const container = document.getElementById("canvasContainer");
     const fileInput = document.getElementById("audioFile");
-    const speedSelect = document.getElementById("speed");
     const startBtn = document.getElementById("startBtn");
     const pauseBtn = document.getElementById("pauseBtn");
     const saveBtn = document.getElementById("saveBtn");
-    const container = document.getElementById("canvasContainer");
-    const fileInfo = document.getElementById("fileInfo");
-    const progressDisplay = document.getElementById("progress");
-    const navButtons = document.getElementById("navButtons");
-    const back15Btn = document.getElementById("back15");
-    const playPauseBtn = document.getElementById("playPause");
-    const forward15Btn = document.getElementById("forward15");
+    const speedSelect = document.getElementById("speed");
+    const status = document.getElementById("status");
+    const postControls = document.getElementById("postControls");
+    const back15 = document.getElementById("back15");
+    const togglePlay = document.getElementById("togglePlay");
+    const forward15 = document.getElementById("forward15");
 
     const canvasWidth = window.innerWidth;
     const canvasHeight = 300;
-    const tickTrackHeight = 20;
     const labelHeight = 20;
-    const usableHeight = canvasHeight - tickTrackHeight - labelHeight;
+    const usableHeight = canvasHeight - labelHeight;
 
-    let audio, audioCtx, analyser, dataArray;
+    let audio, audioCtx, analyser, dataArray, sourceNode;
     let currentCanvas, ctx;
     let drawX = 0;
+    let masterCounter = 0;
+    let totalDuration = 0;
     let isPaused = false;
-    let animationId = null;
+    let animationId;
     let playbackRate = 1;
-    let duration = 0;
-    let drawTime = 0;
 
-    function formatTime(sec) {
-      const h = Math.floor(sec / 3600);
-      const m = Math.floor((sec % 3600) / 60);
-      const s = Math.floor(sec % 60);
-      return `${h}h${m}m${s}s`;
-    }
+    const labelInterval = 100; // px
+    const tickEvery = 60; // seconds
+    const thickTickEvery = 15 * 60; // seconds
 
-    function createCanvas() {
+    function createNewCanvas() {
       const canvas = document.createElement("canvas");
       canvas.width = canvasWidth;
       canvas.height = canvasHeight;
@@ -118,32 +122,18 @@
       drawX = 0;
     }
 
-    function drawTicks(x, seconds) {
-      ctx.fillStyle = "white";
-      const mod60 = seconds % 60;
-      const mod15min = seconds % 900;
-
-      const width = (mod15min === 0) ? 2 : 1;
-
-      ctx.fillRect(x, usableHeight, width, tickTrackHeight);
-    }
-
-    function drawTimeLabel(x, timeStr) {
-      ctx.fillStyle = "black";
-      ctx.fillRect(x - 25, usableHeight + tickTrackHeight, 50, labelHeight);
-
-      ctx.fillStyle = "white";
-      ctx.textAlign = "center";
-      ctx.font = "12px sans-serif";
-      ctx.fillText(timeStr, x, usableHeight + tickTrackHeight + 14);
+    function formatTime(seconds) {
+      const hrs = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${hrs}h${mins}m${secs}s`;
     }
 
     function drawSpectrogram() {
-      if (!audio || audio.ended || isPaused) return;
-
-      drawTime = audio.currentTime;
+      if (!audio || isPaused || audio.ended) return;
 
       analyser.getByteFrequencyData(dataArray);
+
       for (let y = 0; y < analyser.frequencyBinCount; y++) {
         const value = dataArray[y];
         const hue = value * 1.5;
@@ -151,27 +141,45 @@
         ctx.fillRect(drawX, usableHeight - y, 1, 1);
       }
 
-      const seconds = Math.floor(drawTime);
+      const timeSec = masterCounter;
 
-      if (drawX % 1 === 0) {
-        drawTicks(drawX, seconds);
+      // Minor tick every 60s
+      if (timeSec % tickEvery === 0) {
+        ctx.fillStyle = "white";
+        ctx.fillRect(drawX, 0, 2, 5);
       }
 
-      if (drawX % 100 === 0) {
-        drawTimeLabel(drawX, formatTime(drawTime));
+      // Major tick every 15 minutes
+      if (timeSec % thickTickEvery === 0) {
+        ctx.fillStyle = "white";
+        ctx.fillRect(drawX, 0, 2, 20);
       }
 
-      progressDisplay.textContent = `Progress: ${formatTime(drawTime)}`;
+      // Time label every 100px
+      if (drawX % labelInterval === 0) {
+        const label = formatTime(timeSec);
+        ctx.fillStyle = "black";
+        ctx.fillRect(drawX - 25, usableHeight, 50, labelHeight);
+        ctx.fillStyle = "white";
+        ctx.font = "12px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(label, drawX, usableHeight + 14);
+      }
+
+      // Status update
+      status.innerText = `File: ${audio.dataset.name} | Total Duration: ${formatTime(totalDuration)} | Processing: ${formatTime(masterCounter)}`;
+
+      masterCounter++;
 
       drawX++;
-
       if (drawX >= canvasWidth) {
-        createCanvas();
+        createNewCanvas();
       }
 
-      if (drawTime >= duration) {
+      if (masterCounter >= Math.floor(totalDuration)) {
         cancelAnimationFrame(animationId);
-        navButtons.classList.remove("hidden");
+        audio.pause();
+        showPostControls();
         return;
       }
 
@@ -181,62 +189,73 @@
     startBtn.addEventListener("click", async () => {
       const file = fileInput.files[0];
       if (!file) {
-        alert("Please choose a file");
+        alert("Select an MP3 file.");
         return;
       }
 
+      if (animationId) cancelAnimationFrame(animationId);
+      if (audio) {
+        audio.pause();
+        URL.revokeObjectURL(audio.src);
+      }
+
       container.innerHTML = "";
-      navButtons.classList.add("hidden");
-      pauseBtn.disabled = false;
+      postControls.style.display = "none";
+      createNewCanvas();
 
       const blobURL = URL.createObjectURL(file);
       audio = new Audio(blobURL);
+      audio.dataset.name = file.name;
       audio.crossOrigin = "anonymous";
-      audio.preload = "auto";
+      playbackRate = parseFloat(speedSelect.value);
+      audio.playbackRate = playbackRate;
 
-      const arrayBuffer = await file.arrayBuffer();
-      const offlineCtx = new OfflineAudioContext(1, 44100 * 40, 44100);
-      const decoded = await offlineCtx.decodeAudioData(arrayBuffer);
-      duration = decoded.duration;
-
-      fileInfo.textContent = `Loaded: ${file.name} (${formatTime(duration)})`;
+      await audio.play();
+      totalDuration = audio.duration || await getDuration(audio);
 
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const source = audioCtx.createMediaElementSource(audio);
+      sourceNode = audioCtx.createMediaElementSource(audio);
       analyser = audioCtx.createAnalyser();
       analyser.fftSize = 512;
       dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-      source.connect(analyser);
+      sourceNode.connect(analyser);
       analyser.connect(audioCtx.destination);
 
-      playbackRate = parseFloat(speedSelect.value);
-      audio.playbackRate = playbackRate;
-
-      createCanvas();
       isPaused = false;
-      audio.play();
+      masterCounter = 0;
+      pauseBtn.disabled = false;
+      pauseBtn.textContent = "Pause";
+
       drawSpectrogram();
     });
 
     pauseBtn.addEventListener("click", () => {
       if (!audio) return;
-      isPaused = !isPaused;
-      pauseBtn.textContent = isPaused ? "Resume" : "Pause";
 
+      isPaused = !isPaused;
       if (isPaused) {
         audio.pause();
+        pauseBtn.textContent = "Resume";
         cancelAnimationFrame(animationId);
       } else {
         audio.play();
+        pauseBtn.textContent = "Pause";
         drawSpectrogram();
       }
     });
 
+    function getDuration(audio) {
+      return new Promise(resolve => {
+        audio.addEventListener("loadedmetadata", () => {
+          resolve(audio.duration);
+        });
+      });
+    }
+
     saveBtn.addEventListener("click", () => {
       const mergedCanvas = document.createElement("canvas");
       const totalHeight = container.childNodes.length * canvasHeight;
-
       mergedCanvas.width = canvasWidth;
       mergedCanvas.height = totalHeight;
       const mergedCtx = mergedCanvas.getContext("2d");
@@ -252,29 +271,30 @@
       a.click();
     });
 
-    back15Btn.addEventListener("click", () => {
-      if (!audio) return;
-      audio.currentTime = Math.max(0, audio.currentTime - 15);
-    });
+    function showPostControls() {
+      postControls.style.display = "block";
 
-    forward15Btn.addEventListener("click", () => {
-      if (!audio) return;
-      audio.currentTime = Math.min(duration, audio.currentTime + 15);
-    });
+      back15.onclick = () => {
+        if (!audio) return;
+        audio.currentTime = Math.max(0, audio.currentTime - 15);
+      };
 
-    playPauseBtn.addEventListener("click", () => {
-      if (!audio) return;
-      isPaused = !isPaused;
-      playPauseBtn.textContent = isPaused ? "Resume" : "Pause";
+      forward15.onclick = () => {
+        if (!audio) return;
+        audio.currentTime = Math.min(totalDuration, audio.currentTime + 15);
+      };
 
-      if (isPaused) {
-        audio.pause();
-        cancelAnimationFrame(animationId);
-      } else {
-        audio.play();
-        drawSpectrogram();
-      }
-    });
+      togglePlay.onclick = () => {
+        if (!audio) return;
+        if (audio.paused) {
+          audio.play();
+          togglePlay.textContent = "Pause";
+        } else {
+          audio.pause();
+          togglePlay.textContent = "Play";
+        }
+      };
+    }
   </script>
 </body>
 </html>
