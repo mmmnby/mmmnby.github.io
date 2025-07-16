@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Wrapped MP3 Spectrogram Viewer</title>
+  <meta charset="UTF-8" />
+  <title>Advanced Spectrogram Viewer</title>
   <style>
     body {
       background: #111;
@@ -14,7 +14,7 @@
     }
 
     .controls {
-      padding: 10px;
+      padding: 12px;
     }
 
     button, select, input {
@@ -35,15 +35,25 @@
       margin: 10px 0;
     }
 
-    #navButtons {
-      display: none;
+    #status {
       margin-top: 10px;
+      color: #8f8;
+      font-weight: bold;
+    }
+
+    .jump-buttons {
+      display: none;
+      margin: 10px;
+    }
+
+    .jump-buttons button {
+      margin: 0 10px;
     }
   </style>
 </head>
 <body>
 
-  <h1>Multi-Line Spectrogram</h1>
+  <h1>Advanced MP3 Spectrogram</h1>
 
   <div class="controls">
     <input type="file" id="audioFile" accept=".mp3" />
@@ -61,37 +71,49 @@
     <button id="saveBtn">Download PNG</button>
   </div>
 
-  <div id="navButtons">
-    <button id="leftBtn">⏪ -15s</button>
-    <button id="rightBtn">+15s ⏩</button>
+  <div class="jump-buttons" id="jumpButtons">
+    <button id="leftBtn">← Jump -15s</button>
+    <button id="rightBtn">Jump +15s →</button>
   </div>
+
+  <div id="status">Status: Idle</div>
 
   <div class="canvas-container" id="canvasContainer"></div>
 
   <script>
-    const container = document.getElementById("canvasContainer");
     const fileInput = document.getElementById("audioFile");
     const startBtn = document.getElementById("startBtn");
     const pauseBtn = document.getElementById("pauseBtn");
     const saveBtn = document.getElementById("saveBtn");
     const speedSelect = document.getElementById("speed");
-    const navButtons = document.getElementById("navButtons");
+    const status = document.getElementById("status");
+    const container = document.getElementById("canvasContainer");
+    const jumpButtons = document.getElementById("jumpButtons");
     const leftBtn = document.getElementById("leftBtn");
     const rightBtn = document.getElementById("rightBtn");
 
     const canvasWidth = window.innerWidth;
-    const canvasHeight = 300;
-    const labelHeight = 30;
-    const usableHeight = canvasHeight - labelHeight;
+    const canvasHeight = 320;
+    const tickLineHeight = 20;
+    const labelHeight = 20;
+    const usableHeight = canvasHeight - labelHeight - tickLineHeight;
 
+    let drawX = 0;
     let playbackRate = 1;
     let audio, audioCtx, analyser, dataArray;
     let currentCanvas, ctx;
-    let drawX = 0;
     let isPaused = false;
     let animationId;
+    let startTime;
 
-    const labelInterval = 100;
+    const labelIntervalPx = 100;
+
+    function formatTime(seconds) {
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      return `${h}h${m}m${s}s`;
+    }
 
     function createNewCanvas() {
       const canvas = document.createElement("canvas");
@@ -103,50 +125,39 @@
       drawX = 0;
     }
 
-    function formatTime(seconds) {
-      const hrs = Math.floor(seconds / 3600);
-      const mins = Math.floor((seconds % 3600) % 3600 / 60);
-      const secs = Math.floor(seconds % 60);
-      return `${hrs}h${mins}m${secs}s`;
-    }
-
     function drawSpectrogram() {
       if (!audio || audio.paused || audio.ended || isPaused) return;
 
       analyser.getByteFrequencyData(dataArray);
 
-      // Draw frequency data
       for (let y = 0; y < analyser.frequencyBinCount; y++) {
         const value = dataArray[y];
         const hue = value * 1.5;
         ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
-        ctx.fillRect(drawX, usableHeight - y, 1, 1);
+        ctx.fillRect(drawX, tickLineHeight + usableHeight - y, 1, 1);
       }
 
-      // Draw minor and major ticks
-      const realTime = audio.currentTime;
+      // Tick marks (minor: every minute, major: every 15 mins)
+      const elapsed = audio.currentTime;
+      const elapsedMinutes = Math.floor(elapsed / 60);
+      const isMajor = elapsedMinutes % 15 === 0;
+      const isMinor = elapsedMinutes % 1 === 0;
 
-      const secondsPerPixel = 1 / playbackRate;
-      const currentSecond = realTime;
-
-      const isMajor = Math.floor(currentSecond) % 900 === 0; // every 15 min
-      const isMinor = Math.floor(currentSecond) % 60 === 0; // every 1 min
-
-      if (isMinor || isMajor) {
+      if (isMinor && drawX % 1 === 0) {
         ctx.fillStyle = "white";
-        const tickHeight = isMajor ? 16 : 10;
-        ctx.fillRect(drawX, usableHeight + 1, 2, tickHeight);
+        const tickHeight = isMajor ? 16 : 8;
+        ctx.fillRect(drawX, 0, 2, tickHeight);
       }
 
-      // Draw time label every 100px
-      if (drawX % labelInterval === 0) {
-        const label = formatTime(currentSecond);
+      // Time labels every 100 px
+      if (drawX % labelIntervalPx === 0) {
+        const label = formatTime(elapsed);
         ctx.fillStyle = "black";
-        ctx.fillRect(drawX - 30, usableHeight, 60, labelHeight); // padding
+        ctx.fillRect(drawX - 30, canvasHeight - labelHeight, 60, labelHeight);
         ctx.fillStyle = "white";
         ctx.font = "12px sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(label, drawX, usableHeight + 22);
+        ctx.fillText(label, drawX, canvasHeight - 6);
       }
 
       drawX++;
@@ -155,10 +166,16 @@
       }
 
       animationId = requestAnimationFrame(drawSpectrogram);
+    }
 
-      if (audio.ended) {
-        navButtons.style.display = "block";
-      }
+    function showStatus(message) {
+      status.textContent = `Status: ${message}`;
+    }
+
+    function onComplete() {
+      const duration = (performance.now() - startTime) / 1000;
+      showStatus(`Done (processed in ${duration.toFixed(2)}s)`);
+      jumpButtons.style.display = "block";
     }
 
     startBtn.addEventListener("click", async () => {
@@ -175,7 +192,7 @@
       }
 
       container.innerHTML = "";
-      navButtons.style.display = "none";
+      jumpButtons.style.display = "none";
       createNewCanvas();
 
       const blobURL = URL.createObjectURL(file);
@@ -198,7 +215,14 @@
       pauseBtn.textContent = "Pause";
 
       audio.play();
+      startTime = performance.now();
+      showStatus("Processing...");
       drawSpectrogram();
+
+      audio.onended = () => {
+        cancelAnimationFrame(animationId);
+        onComplete();
+      };
     });
 
     pauseBtn.addEventListener("click", () => {
@@ -210,9 +234,11 @@
       if (!isPaused) {
         audio.play();
         drawSpectrogram();
+        showStatus("Processing...");
       } else {
         audio.pause();
         cancelAnimationFrame(animationId);
+        showStatus("Paused");
       }
     });
 
@@ -237,15 +263,13 @@
     });
 
     leftBtn.addEventListener("click", () => {
-      if (audio) {
-        audio.currentTime = Math.max(0, audio.currentTime - 15);
-      }
+      if (!audio) return;
+      audio.currentTime = Math.max(audio.currentTime - 15, 0);
     });
 
     rightBtn.addEventListener("click", () => {
-      if (audio) {
-        audio.currentTime += 15;
-      }
+      if (!audio) return;
+      audio.currentTime = Math.min(audio.currentTime + 15, audio.duration);
     });
   </script>
 </body>
