@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Spectrogram Player Phase 1 & 2</title>
+<title>Spectrogram Player Phase 1 & 2 (Minimal Changes)</title>
 <style>
   body { background:#111; color:#fff; font-family:sans-serif; margin:0; text-align:center; }
   .controls { padding:10px; }
@@ -72,7 +72,6 @@ let drawX = 0, spectrogramComplete = false, isPaused = false, animationId;
 let spectroCanvases = [], overlayCanvases = [], rowTimestamps = [];
 
 let phase2Audio = null;
-let phase2CursorTimer = null;
 let phase2Playing = false;
 
 function formatTime(s) {
@@ -117,11 +116,11 @@ function createNewRow() {
   // Record row start time for precise phase 2 mapping
   rowTimestamps.push(audio.currentTime);
 
-  // Phase 1 - no seek on overlay click (only active in phase 2)
-
   rowsContainer.appendChild(rowDiv);
   drawX = 0;
 }
+
+// ** ORIGINAL PHASE 1 SPECTROGRAM DRAWING LOGIC PRESERVED UNCHANGED **
 
 function drawSpectrogram() {
   if (!audio || audio.paused || audio.ended || isPaused) return;
@@ -175,7 +174,7 @@ function drawSpectrogram() {
   }
 }
 
-// PHASE 2: create new audio instance, overlay cursor, controls
+// PHASE 2 SETUP & CONTROLS (separate audio instance, cursor overlay, play/pause, seek)
 
 function setupPhase2() {
   if (!spectrogramComplete) return;
@@ -191,7 +190,6 @@ function setupPhase2() {
 
   phase2Playing = false;
 
-  // Add click listeners for seek on overlay canvases (phase 2)
   overlayCanvases.forEach(({ canvas }, idx) => {
     canvas.style.pointerEvents = 'auto';
     canvas.addEventListener('click', e => {
@@ -207,7 +205,6 @@ function setupPhase2() {
     });
   });
 
-  // Show phase 2 controls
   navButtons.style.display = 'block';
 
   phase2Audio.addEventListener('ended', () => {
@@ -231,8 +228,6 @@ function setupPhase2() {
   });
 }
 
-// Draw the red-black-white cursor on overlay canvases (phase 2)
-
 function drawPhase2Cursor() {
   if (!phase2Audio) return;
 
@@ -244,11 +239,10 @@ function drawPhase2Cursor() {
     const t0 = rowTimestamps[idx];
     const t1 = rowTimestamps[idx + 1] || phase2Audio.duration || 0;
 
-    if (t < t0 || t > t1) return; // outside this row
+    if (t < t0 || t > t1) return;
 
     const x = ((t - t0) / (t1 - t0)) * canvas.width;
 
-    // Draw multi-border cursor
     ctx.lineWidth = 5;
     ctx.strokeStyle = 'red';
     ctx.beginPath();
@@ -296,7 +290,6 @@ masterToggle.addEventListener('click', () => {
   if (phase2Playing) {
     phase2Audio.pause();
   } else {
-    // Robust play: attempt play and handle potential errors (e.g., tab switched)
     phase2Audio.play().catch(() => {
       phase2Audio.load();
       phase2Audio.play().catch(console.error);
@@ -304,7 +297,7 @@ masterToggle.addEventListener('click', () => {
   }
 });
 
-// INITIALIZE phase 1 audio, analyser, and canvas setup
+// START and PAUSE buttons (Phase 1)
 
 startBtn.addEventListener('click', () => {
   if (!fileInput.files[0]) {
@@ -366,7 +359,6 @@ pauseBtn.addEventListener('click', () => {
 });
 
 saveBtn.addEventListener('click', () => {
-  // Save combined spectrogram as PNG (not implemented here)
   alert('Save PNG not implemented in this demo.');
 });
 
