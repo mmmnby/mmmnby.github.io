@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Live Scrollable MP3 Spectrogram</title>
+  <title>Live Scrollable Spectrogram</title>
   <style>
     body {
       background: #111;
@@ -71,7 +71,7 @@
     const saveBtn = document.getElementById("saveBtn");
     const speedSelect = document.getElementById("speed");
 
-    const labelInterval = 75;
+    const labelInterval = 100;
     const labelHeight = 20;
     const usableHeight = canvas.height - labelHeight;
 
@@ -86,13 +86,7 @@
       const hrs = Math.floor(seconds / 3600);
       const mins = Math.floor((seconds % 3600) / 60);
       const secs = Math.floor(seconds % 60);
-
-      let label = '';
-      if (hrs > 0) label += `${hrs}h`;
-      if (mins > 0 || hrs > 0) label += `${mins}m`;
-      label += `${secs}s`;
-
-      return label;
+      return `${hrs}h${mins}m${secs}s`;
     }
 
     function expandCanvasIfNeeded() {
@@ -125,12 +119,12 @@
         ctx.fillRect(drawX, usableHeight - y, 1, 1);
       }
 
+      // Draw time label every 100px
       if (drawX % labelInterval === 0) {
         const elapsed = audio.currentTime;
         const label = formatTime(elapsed);
-
         ctx.fillStyle = "black";
-        ctx.fillRect(drawX - 30, usableHeight, 60, labelHeight);
+        ctx.fillRect(drawX - 25, usableHeight, 50, labelHeight);
         ctx.fillStyle = "white";
         ctx.font = "12px sans-serif";
         ctx.textAlign = "center";
@@ -139,8 +133,6 @@
 
       drawX++;
       animationId = requestAnimationFrame(drawSpectrogram);
-
-      // Auto-scroll right as audio plays
       container.scrollLeft = drawX - container.clientWidth + 100;
     }
 
@@ -208,6 +200,5 @@
       a.click();
     });
   </script>
-
 </body>
 </html>
