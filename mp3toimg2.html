@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Live Scrollable Spectrogram</title>
+  <title>Live Scrollable MP3 Spectrogram</title>
   <style>
     body {
       background: #111;
@@ -33,7 +33,6 @@
     canvas {
       background: black;
       display: block;
-      min-height: 256px;
     }
   </style>
 </head>
@@ -54,7 +53,7 @@
     </select>
     <button id="startBtn">Start</button>
     <button id="pauseBtn" disabled>Pause</button>
-    <button id="saveBtn">Download JPEG</button>
+    <button id="saveBtn">Download PNG</button>
   </div>
 
   <div class="canvas-container">
@@ -73,7 +72,7 @@
     const speedSelect = document.getElementById("speed");
 
     const labelInterval = 100;
-    const labelHeight = 20;
+    const labelHeight = 24;
     const usableHeight = canvas.height - labelHeight;
 
     let playbackRate = 1;
@@ -120,16 +119,17 @@
         ctx.fillRect(drawX, usableHeight - y, 1, 1);
       }
 
-      // Draw time label every 100px
       if (drawX % labelInterval === 0) {
         const elapsed = audio.currentTime;
         const label = formatTime(elapsed);
+
         ctx.fillStyle = "black";
-        ctx.fillRect(drawX - 25, usableHeight, 50, labelHeight);
+        ctx.fillRect(drawX - 30, usableHeight, 60, labelHeight);
+
         ctx.fillStyle = "white";
-        ctx.font = "12px sans-serif";
+        ctx.font = "14px monospace";
         ctx.textAlign = "center";
-        ctx.fillText(label, drawX, usableHeight + 14);
+        ctx.fillText(label, drawX, usableHeight + 16);
       }
 
       drawX++;
@@ -194,15 +194,28 @@
     });
 
     saveBtn.addEventListener("click", () => {
-      // Ensure canvas fully updated before saving
-      if (animationId) cancelAnimationFrame(animationId);
+      if (!audio && drawX === 0) return;
 
-      // Create compressed JPEG image
-      const jpegURL = canvas.toDataURL("image/jpeg", 0.7);
-      const link = document.createElement("a");
-      link.href = jpegURL;
-      link.download = "spectrogram.jpg";
-      link.click();
+      // Pause drawing if running
+      if (!isPaused) {
+        isPaused = true;
+        audio.pause();
+        cancelAnimationFrame(animationId);
+        pauseBtn.textContent = "Resume";
+      }
+
+      // Create a trimmed canvas for just the drawn area
+      const trimmedCanvas = document.createElement("canvas");
+      trimmedCanvas.width = drawX;
+      trimmedCanvas.height = canvas.height;
+      const trimmedCtx = trimmedCanvas.getContext("2d");
+      trimmedCtx.drawImage(canvas, 0, 0, drawX, canvas.height, 0, 0, drawX, canvas.height);
+
+      const url = trimmedCanvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "spectrogram.png";
+      a.click();
     });
   </script>
 </body>
