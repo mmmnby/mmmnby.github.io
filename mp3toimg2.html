@@ -193,11 +193,29 @@
     });
 
     saveBtn.addEventListener("click", () => {
-      const url = canvas.toDataURL("image/png");
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "spectrogram.png";
-      a.click();
+      try {
+        if (canvas.width === 0 || canvas.height === 0) {
+          alert("Canvas is empty or not initialized.");
+          return;
+        }
+
+        canvas.toBlob(blob => {
+          if (!blob) {
+            alert("Failed to generate PNG. Try again after some drawing has occurred.");
+            return;
+          }
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "spectrogram.png";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        }, "image/png");
+      } catch (err) {
+        alert("Error downloading PNG: " + err.message);
+      }
     });
   </script>
 </body>
