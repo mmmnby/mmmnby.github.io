@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Advanced Spectrogram Viewer</title>
+  <style>
+    body {
+      background: #111;
+      color: white;
+      font-family: sans-serif;
+      margin: 0; padding: 0;
+      text-align: center;
+    }
+    .controls, .info {
+      padding: 10px;
+    }
+    input, select, button {
+      margin: 5px; padding: 6px 10px;
+      font-size: 16px;
+    }
+    .canvas-container {
+      display: flex; flex-direction: column; align-items: center;
+    }
+    canvas {
+      background: black; display: block; margin-top: 10px;
+    }
+    .tick-area {
+      position: relative;
+      width: 100vw;
+      height: 20px;
+      background: transparent;
+    }
+    .controls-extra {
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Advanced Spectrogram Viewer</h1>
+
+  <div class="controls">
+    <input type="file" id="audioFile" accept=".mp3">
+    <label>Speed:</label>
+    <select id="speed">
+      <option value="1">1×</option>
+      <option value="2">2×</option>
+      <option value="4">4×</option>
+      <option value="30">30×</option>
+      <option value="60">60×</option>
+      <option value="120">120×</option>
+    </select>
+    <button id="startBtn">Start</button>
+    <button id="pauseBtn" disabled>Pause</button>
+    <button id="saveBtn">Download</button>
+  </div>
+
+  <div class="info">
+    <span id="fileInfo">No file loaded</span><br>
+    <span id="statusInfo">Idle</span>
+  </div>
+
+  <div class="canvas-container" id="canvasContainer"></div>
+
+  <script>
+    // Canvas constants
+    const canvasWidth = window.innerWidth;
+    const canvasHeight = 300;
+    const labelHeight = 20;
+    const tickHeightMinor = 10;
+    const tickHeightMajor = 20;
+    const usableHeight = canvasHeight - labelHeight - tickHeightMajor;
+    const labelInterval = 100; // px
+
+    // DOM elems
+    const fileInput = document.getElementById("audioFile"),
+      speedSelect = document.getElementById("speed"),
+      startBtn = document.getElementById("startBtn"),
+      pauseBtn = document.getElementById("pauseBtn"),
+      saveBtn = document.getElementById("saveBtn"),
+      fileInfo = document.getElementById("fileInfo"),
+      statusInfo = document.getElementById("statusInfo"),
+      container = document.getElementById("canvasContainer")
+
+    let audio, audioCtx, analyser, dataArray;
+    let currentCanvas, ctx, drawX = 0;
+    let playbackRate = 1, isPaused = false, animationId;
+    let totalDuration = 0;
+
+    function formatHMS(sec) {
+      const h = Math.floor(sec / 3600),
+            m = Math.floor((sec % 3600)/60),
+            s = Math.floor(sec % 60);
+      return `${h}h${m}m${s}s`;
+    }
+
+    function updateStatus() {
+      const t = audio ? audio.currentTime : 0;
+      statusInfo.textContent = `Processed: ${formatHMS(t)} / ${formatHMS(totalDuration)}`;
+      if (t >= totalDuration - 0.01) onGraphComplete();
+    }
+
+    function onGraphComplete() {
+      cancelAnimationFrame(animationId);
+      pauseBtn.disabled = true;
+      setupExtraControls();
+    }
+
+    function setupExtraControls() {
+      const div = document.createElement("div");
+      div.className = "controls-extra";
+      div.innerHTML = `
+        <button id="rew15">⏪15s</button>
+        <button id="playBtn">▶️/⏸️</button>
+        <button id="fwd15">15s⏩</button>
+      `;
+      document.body.append(div);
+      document.getElementById("rew15").onclick = () => audio.currentTime = Math.max(audio.currentTime - 15,0);
+      document.getElementById("fwd15").onclick = () => audio.currentTime = Math.min(audio.currentTime + 15, totalDuration);
+      document.getElementById("playBtn").onclick = () => {
+        if (audio.paused) { audio.play(); this.textContent = '▶️/⏸️'; }
+        else { audio.pause(); this.textContent = '▶️/⏸️'; }
+      }
+    }
+
+    function createNewCanvas() {
+      const c = document.createElement("canvas");
+      c.width = canvasWidth;
+      c.height = canvasHeight;
+      const cctx = c.getContext("2d");
+      cctx.fillStyle = "black"; cctx.fillRect(0, 0, c.width, c.height);
+      container.appendChild(c);
+      currentCanvas = c; ctx = cctx; drawX = 0;
+    }
+
+    function drawTicks(lineCtx) {
+      for (let x=0; x<=canvasWidth; x+= labelInterval) {
+        const elapsed = x / playbackRate; // approximately
+        const mins = Math.floor(elapsed / 60);
+        if (x % (15*labelInterval) === 0) {
+          lineCtx.fillStyle='white';
+          lineCtx.fillRect(x,0,2,tickHeightMajor);
+        } else {
+          lineCtx.fillStyle='gray';
+          lineCtx.fillRect(x,0,1,tickHeightMinor);
+        }
+      }
+    }
+
+    function drawSpectrogram() {
+      analyser.getByteFrequencyData(dataArray);
+      for(let y=0;y<analyser.frequencyBinCount;y++){
+        const v=dataArray[y]; ctx.fillStyle=`hsl(${v*1.5},100%,50%)`;
+        ctx.fillRect(drawX, usableHeight - y,1,1);
+      }
+      if(drawX%labelInterval===0){
+        const elapsed=audio.currentTime;
+        const lbl=formatHMS(elapsed);
+        ctx.fillStyle='black'; ctx.fillRect(drawX-25,usableHeight + tickHeightMajor,50,labelHeight);
+        ctx.fillStyle='white'; ctx.font='12px sans-serif'; ctx.textAlign='center';
+        ctx.fillText(lbl,drawX, usableHeight + tickHeightMajor + 14);
+      }
+      drawX++;
+      updateStatus();
+      if(drawX>=canvasWidth) createNewCanvas(), drawTicks(ctx);
+      if(!audio.paused && !audio.ended && !isPaused)
+        animationId=requestAnimationFrame(drawSpectrogram);
+    }
+
+    startBtn.onclick = () => {
+      const file=fileInput.files[0];
+      if(!file){ alert("Select MP3"); return; }
+      fileInfo.textContent = `Loaded: ${file.name}`;
+      if(animationId) cancelAnimationFrame(animationId);
+      if(audio) audio.pause();
+      container.innerHTML = "";
+      createNewCanvas(); drawTicks(ctx);
+      playbackRate = +speedSelect.value;
+      audio = new Audio(URL.createObjectURL(file));
+      audio.crossOrigin="anonymous"; audio.playbackRate=playbackRate;
+      audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+      const src=audioCtx.createMediaElementSource(audio);
+      analyser=audioCtx.createAnalyser(); analyser.fftSize=512;
+      dataArray=new Uint8Array(analyser.frequencyBinCount);
+      src.connect(analyser); analyser.connect(audioCtx.destination);
+      audio.onloadedmetadata=()=>{ totalDuration=audio.duration;
+        fileInfo.textContent+=` — Duration: ${formatHMS(totalDuration)}`; }
+      pauseBtn.disabled = false; pauseBtn.textContent="Pause"; isPaused=false;
+      audio.play(); drawSpectrogram();
+    };
+
+    pauseBtn.onclick = ()=>{
+      if(!audio) return;
+      isPaused = !isPaused;
+      if(isPaused){ audio.pause(); cancelAnimationFrame(animationId); pauseBtn.textContent="Resume"; }
+      else { audio.play(); drawSpectrogram(); pauseBtn.textContent="Pause"; }
+    };
+
+    saveBtn.onclick = ()=>{
+      const mc = document.createElement("canvas");
+      const rows = container.childNodes;
+      mc.width = canvasWidth; mc.height = rows.length * canvasHeight;
+      const mctx = mc.getContext("2d");
+      rows.forEach((c,i)=> mctx.drawImage(c,0,i*canvasHeight));
+      const url=mc.toDataURL("image/png");
+      const a=document.createElement("a"); a.href=url; a.download="spectrogram.png"; a.click();
+    };
+  </script>
+</body>
+</html>
