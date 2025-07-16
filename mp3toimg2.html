@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Wrapped Spectrogram Viewer</title>
+  <meta charset="UTF-8" />
+  <title>Stacked Spectrogram with Time Ticks</title>
   <style>
     body {
       background: #111;
@@ -38,7 +38,7 @@
 </head>
 <body>
 
-  <h1>Vertical-Wrapped MP3 Spectrogram</h1>
+  <h1>Stacked Spectrogram with Ticks</h1>
 
   <div class="controls">
     <input type="file" id="audioFile" accept=".mp3" />
@@ -67,16 +67,18 @@
     const speedSelect = document.getElementById("speed");
 
     const canvasWidth = window.innerWidth;
-    const canvasHeight = 320;
+    const canvasHeight = 300;
     const labelHeight = 30;
     const usableHeight = canvasHeight - labelHeight;
 
-    let playbackRate = 1;
     let audio, audioCtx, analyser, dataArray;
     let currentCanvas, ctx;
     let drawX = 0;
     let isPaused = false;
     let animationId;
+    let playbackRate = 1;
+
+    const tickEveryPx = 100;
 
     function createNewCanvas() {
       const canvas = document.createElement("canvas");
@@ -85,8 +87,6 @@
       container.appendChild(canvas);
       currentCanvas = canvas;
       ctx = canvas.getContext("2d");
-
-      // Clear and draw background
       ctx.fillStyle = "black";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       drawX = 0;
@@ -96,7 +96,12 @@
       const hrs = Math.floor(seconds / 3600);
       const mins = Math.floor((seconds % 3600) / 60);
       const secs = Math.floor(seconds % 60);
-      return `${hrs}h${mins}m${secs}s`;
+
+      let label = "";
+      if (hrs > 0) label += `${hrs}h`;
+      if (hrs > 0 || mins > 0) label += `${mins}m`;
+      label += `${secs}s`;
+      return label;
     }
 
     function drawSpectrogram() {
@@ -104,7 +109,6 @@
 
       analyser.getByteFrequencyData(dataArray);
 
-      // Draw frequency bars
       for (let y = 0; y < analyser.frequencyBinCount; y++) {
         const value = dataArray[y];
         const hue = value * 1.5;
@@ -112,38 +116,31 @@
         ctx.fillRect(drawX, usableHeight - y, 1, 1);
       }
 
-      // Time and tick marks
       const elapsed = audio.currentTime;
-      const pixelsPerSecond = 1 / playbackRate;
 
-      const everySecond = (1 * 60) * pixelsPerSecond;     // 1 minute tick
-      const everyMajor = (15 * 60) * pixelsPerSecond;     // 15 minute major tick
-
-      const isMinorTick = (drawX % Math.round(everySecond) === 0);
-      const isMajorTick = (drawX % Math.round(everyMajor) === 0);
-
-      if (isMinorTick || isMajorTick) {
-        const label = formatTime(elapsed);
+      // Ticks and labels every tickEveryPx
+      if (drawX % tickEveryPx === 0) {
+        const timeInSeconds = elapsed;
+        const label = formatTime(timeInSeconds);
+        ctx.strokeStyle = "white";
         ctx.beginPath();
+
+        const isMajor = (Math.floor(timeInSeconds / 60 / playbackRate) % 15 === 0);
+        const tickHeight = isMajor ? 10 : 5;
+
         ctx.moveTo(drawX, usableHeight);
-        ctx.lineTo(drawX, canvasHeight);
-        ctx.strokeStyle = isMajorTick ? "white" : "gray";
-        ctx.lineWidth = isMajorTick ? 2 : 1;
+        ctx.lineTo(drawX, usableHeight + tickHeight);
         ctx.stroke();
 
-        if (isMajorTick) {
+        if (isMajor) {
           ctx.fillStyle = "white";
           ctx.font = "12px sans-serif";
           ctx.textAlign = "center";
-
-          // prevent clipping by padding the text area
-          const labelX = Math.min(Math.max(drawX, 20), canvasWidth - 20);
-          ctx.fillText(label, labelX, usableHeight + 20);
+          ctx.fillText(label, drawX, usableHeight + 20);
         }
       }
 
       drawX++;
-
       if (drawX >= canvasWidth) {
         createNewCanvas();
       }
@@ -182,9 +179,9 @@
       source.connect(analyser);
       analyser.connect(audioCtx.destination);
 
-      isPaused = false;
       pauseBtn.disabled = false;
       pauseBtn.textContent = "Pause";
+      isPaused = false;
 
       audio.play();
       drawSpectrogram();
@@ -206,23 +203,24 @@
     });
 
     saveBtn.addEventListener("click", () => {
-      const fullCanvas = document.createElement("canvas");
+      const mergedCanvas = document.createElement("canvas");
       const totalHeight = container.childNodes.length * canvasHeight;
-      fullCanvas.width = canvasWidth;
-      fullCanvas.height = totalHeight;
 
-      const fullCtx = fullCanvas.getContext("2d");
+      mergedCanvas.width = canvasWidth;
+      mergedCanvas.height = totalHeight;
+
+      const mergedCtx = mergedCanvas.getContext("2d");
+
       container.childNodes.forEach((canvas, i) => {
-        fullCtx.drawImage(canvas, 0, i * canvasHeight);
+        mergedCtx.drawImage(canvas, 0, i * canvasHeight);
       });
 
-      const url = fullCanvas.toDataURL("image/png");
+      const url = mergedCanvas.toDataURL("image/png");
       const a = document.createElement("a");
       a.href = url;
       a.download = "spectrogram.png";
       a.click();
     });
   </script>
-
 </body>
 </html>
