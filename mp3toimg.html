@@ -2,28 +2,28 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>MP3 Spectrogram Viewer (Streamed Segments)</title>
+  <title>MP3 Spectrogram (Fast Decode)</title>
   <style>
     body {
       background: #111;
       color: #fff;
       font-family: sans-serif;
-      text-align: center;
       padding: 20px;
+      text-align: center;
     }
     canvas {
-      background: black;
-      border: 1px solid #555;
       display: block;
       margin: 20px auto;
+      background: black;
+      border: 1px solid #444;
     }
     .controls {
-      margin: 20px 0;
+      margin: 20px;
     }
-    button, select {
-      font-size: 16px;
+    select, button, input {
       padding: 6px 12px;
-      margin: 6px;
+      font-size: 16px;
+      margin: 5px;
     }
     #status {
       margin-top: 10px;
@@ -39,165 +39,168 @@
   <h1>MP3 Spectrogram Viewer</h1>
 
   <div class="controls">
-    <input type="file" id="audioInput" accept=".mp3">
-    <select id="timeSelector" disabled></select>
-    <button id="processBtn" disabled>Process Segment</button>
-    <button id="saveBtn" disabled>Save Image</button>
-    <div id="status">Select an MP3 file to begin.</div>
+    <input type="file" id="fileInput" accept=".mp3">
+    <select id="segmentSelect" disabled></select>
+    <button id="renderBtn" disabled>Render Segment</button>
+    <button id="saveBtn" disabled>Save PNG</button>
+    <div id="status">Select an MP3 file.</div>
   </div>
 
-  <canvas id="spectrogram" width="1000" height="256"></canvas>
+  <canvas id="canvas" width="1000" height="256"></canvas>
 
   <script>
-    const canvas = document.getElementById("spectrogram");
+    const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
-    const fileInput = document.getElementById("audioInput");
-    const processBtn = document.getElementById("processBtn");
+    const fileInput = document.getElementById("fileInput");
+    const segmentSelect = document.getElementById("segmentSelect");
+    const renderBtn = document.getElementById("renderBtn");
     const saveBtn = document.getElementById("saveBtn");
-    const timeSelector = document.getElementById("timeSelector");
     const status = document.getElementById("status");
 
-    let audioBlob = null;
-    let totalDuration = 0;
-    let fftSize = 512;
-    let pageDuration = 600; // 10 minutes in seconds
+    let decodedBuffer = null;
+    let sampleRate = 8000;
+    const segmentDurationSec = 600; // 10 minutes
+    const fftSize = 512;
+    const hopSize = fftSize / 2;
 
     function setStatus(msg, isError = false) {
       status.textContent = "Status: " + msg;
       status.classList.toggle("error", isError);
     }
 
-    function drawLabels(sampleRate) {
-      ctx.fillStyle = "white";
-      ctx.font = "12px sans-serif";
-      ctx.textAlign = "right";
-      ctx.textBaseline = "middle";
-      const nyquist = sampleRate / 2;
-
-      for (let y = 0; y <= 4; y++) {
-        const pos = (y / 4) * canvas.height;
-        const freq = ((4 - y) / 4) * nyquist;
-        ctx.fillText(freq.toFixed(0) + " Hz", 58, pos);
+    function downsampleBuffer(buffer, targetRate = 8000) {
+      const input = buffer.getChannelData(0);
+      const ratio = buffer.sampleRate / targetRate;
+      const length = Math.floor(input.length / ratio);
+      const output = new Float32Array(length);
+      for (let i = 0; i < length; i++) {
+        output[i] = input[Math.floor(i * ratio)];
       }
-
-      ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      for (let x = 0; x <= 10; x++) {
-        const px = 60 + x * ((canvas.width - 60) / 10);
-        const seconds = timeSelector.value * 600 + x * 60;
-        const label = (seconds / 60).toFixed(0) + " min";
-        ctx.fillText(label, px, canvas.height - 12);
-      }
+      return output;
     }
 
-    async function renderSpectrogram(audioBuffer) {
-      const data = audioBuffer.getChannelData(0);
-      const sampleRate = audioBuffer.sampleRate;
-      const fftBins = fftSize / 2;
-      const hopSize = fftSize / 2;
-      const frameCount = Math.floor((data.length - fftSize) / hopSize);
-      const pixels = Math.min(canvas.width - 60, frameCount);
+    function drawSpectrogram(segment, rate) {
       const fft = new FFT(fftSize);
-      const input = new Array(fftSize).fill(0);
-      const output = fft.createComplexArray();
+      const bins = fftSize / 2;
+      const steps = Math.floor((segment.length - fftSize) / hopSize);
+      const pixels = Math.min(canvas.width - 60, steps);
 
       ctx.fillStyle = "black";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+      const win = new Float32Array(fftSize);
+      for (let i = 0; i < fftSize; i++) {
+        win[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (fftSize - 1)));
+      }
+
+      const out = fft.createComplexArray();
       for (let x = 0; x < pixels; x++) {
-        const offset = x * hopSize;
+        const start = x * hopSize;
+        const frame = new Float32Array(fftSize);
         for (let i = 0; i < fftSize; i++) {
-          const sample = data[offset + i] || 0;
-          const window = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (fftSize - 1)));
-          input[i] = sample * window;
+          frame[i] = (segment[start + i] || 0) * win[i];
         }
 
-        fft.realTransform(output, input);
-        fft.completeSpectrum(output);
+        fft.realTransform(out, frame);
+        fft.completeSpectrum(out);
 
-        for (let y = 0; y < fftBins && y < canvas.height; y++) {
-          const re = output[2 * y];
-          const im = output[2 * y + 1];
+        for (let y = 0; y < bins && y < canvas.height; y++) {
+          const re = out[2 * y];
+          const im = out[2 * y + 1];
           const mag = Math.sqrt(re * re + im * im);
           const dB = Math.log10(mag + 1) * 40;
           const hue = Math.min(255, Math.floor(dB * 5));
           ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
-          ctx.fillRect(x + 60, canvas.height - 1 - y, 1, 1);
+          ctx.fillRect(x + 60, canvas.height - y - 1, 1, 1);
         }
-
-        if (x % 100 === 0) await new Promise(r => requestAnimationFrame(r));
       }
 
-      drawLabels(sampleRate);
+      drawLabels(rate);
     }
 
-    processBtn.addEventListener("click", async () => {
-      const startMinute = parseInt(timeSelector.value);
-      const startTime = startMinute * 60;
-      const endTime = startTime + pageDuration;
-      const duration = totalDuration;
+    function drawLabels(rate) {
+      ctx.fillStyle = "white";
+      ctx.font = "12px sans-serif";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
 
-      const fileSize = audioBlob.size;
-      const startByte = Math.floor((startTime / duration) * fileSize);
-      const endByte = Math.floor((endTime / duration) * fileSize);
-
-      const slice = audioBlob.slice(startByte, endByte);
-      setStatus(`Decoding audio from ${startMinute}–${startMinute + 10} min...`);
-
-      try {
-        const arrayBuffer = await slice.arrayBuffer();
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const buffer = await audioCtx.decodeAudioData(arrayBuffer);
-        await renderSpectrogram(buffer);
-        saveBtn.disabled = false;
-        setStatus(`Rendered spectrogram from ${startMinute}–${startMinute + 10} minutes`);
-      } catch (err) {
-        console.error(err);
-        setStatus("Error decoding audio: " + err.message, true);
+      const nyquist = rate / 2;
+      for (let i = 0; i <= 4; i++) {
+        const y = (i / 4) * canvas.height;
+        const freq = ((4 - i) / 4) * nyquist;
+        ctx.fillText(freq.toFixed(0) + " Hz", 55, y);
       }
+
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      for (let i = 0; i <= 10; i++) {
+        const x = 60 + (i / 10) * (canvas.width - 60);
+        ctx.fillText(i + " min", x, canvas.height - 12);
+      }
+    }
+
+    renderBtn.addEventListener("click", () => {
+      const min = parseInt(segmentSelect.value);
+      const start = min * 60 * sampleRate;
+      const end = start + segmentDurationSec * sampleRate;
+
+      const segment = decodedBuffer.subarray(start, Math.min(end, decodedBuffer.length));
+      drawSpectrogram(segment, sampleRate);
+      setStatus(`Rendered ${min}–${min + 10} min`);
+      saveBtn.disabled = false;
     });
 
     saveBtn.addEventListener("click", () => {
       const link = document.createElement("a");
-      link.download = `spectrogram_${timeSelector.value}_min.png`;
+      link.download = "spectrogram.png";
       link.href = canvas.toDataURL("image/png");
       link.click();
     });
 
-    fileInput.addEventListener("change", () => {
+    fileInput.addEventListener("change", async () => {
       const file = fileInput.files[0];
       if (!file) return;
-      setStatus("Loading file duration...");
 
-      const audioElem = new Audio();
-      audioBlob = file;
-      const url = URL.createObjectURL(file);
+      setStatus("Decoding file...");
+      const arrayBuffer = await file.arrayBuffer();
 
-      audioElem.addEventListener("loadedmetadata", () => {
-        totalDuration = audioElem.duration;
-        const totalMinutes = Math.floor(totalDuration / 60);
-        timeSelector.innerHTML = "";
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const rawBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
-        for (let i = 0; i < totalMinutes; i += 10) {
+        const monoBuffer = audioCtx.createBuffer(
+          1,
+          rawBuffer.length,
+          rawBuffer.sampleRate
+        );
+        const input = rawBuffer.numberOfChannels > 1
+          ? rawBuffer.getChannelData(0).map((v, i) =>
+              (v + rawBuffer.getChannelData(1)[i]) / 2)
+          : rawBuffer.getChannelData(0);
+
+        monoBuffer.copyToChannel(Float32Array.from(input), 0, 0);
+
+        decodedBuffer = downsampleBuffer(monoBuffer, sampleRate);
+
+        const durationMin = Math.floor(decodedBuffer.length / sampleRate / 60);
+        segmentSelect.innerHTML = "";
+        for (let i = 0; i < durationMin; i += 10) {
           const opt = document.createElement("option");
           opt.value = i;
           opt.textContent = `${i}–${i + 10} min`;
-          timeSelector.appendChild(opt);
+          segmentSelect.appendChild(opt);
         }
 
-        timeSelector.disabled = false;
-        processBtn.disabled = false;
-        setStatus("Ready. Select a segment and click Process.");
-      });
-
-      audioElem.onerror = () => {
-        setStatus("Could not load MP3 metadata. Try another file.", true);
-      };
-
-      audioElem.src = url;
+        segmentSelect.disabled = false;
+        renderBtn.disabled = false;
+        setStatus("Ready. Select a segment to render.");
+      } catch (err) {
+        console.error(err);
+        setStatus("Failed to decode MP3: " + err.message, true);
+      }
     });
 
-    // Inlined FFT class
+    // Simple inlined FFT class
     class FFT {
       constructor(size) {
         this.size = size;
