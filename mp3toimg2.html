@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Live Scrollable Spectrogram with Download Fix</title>
+  <title>Live Scrollable Spectrogram</title>
   <style>
     body {
       background: #111;
@@ -33,6 +33,7 @@
     canvas {
       background: black;
       display: block;
+      min-height: 256px;
     }
   </style>
 </head>
@@ -53,11 +54,11 @@
     </select>
     <button id="startBtn">Start</button>
     <button id="pauseBtn" disabled>Pause</button>
-    <button id="saveBtn">Download PNG</button>
+    <button id="saveBtn">Download JPEG</button>
   </div>
 
   <div class="canvas-container">
-    <canvas id="spectrogram" height="300"></canvas>
+    <canvas id="spectrogram" height="256"></canvas>
   </div>
 
   <script>
@@ -193,49 +194,15 @@
     });
 
     saveBtn.addEventListener("click", () => {
-      if (drawX === 0) {
-        alert("No spectrogram data to save.");
-        return;
-      }
+      // Ensure canvas fully updated before saving
+      if (animationId) cancelAnimationFrame(animationId);
 
-      // Create offscreen canvas with full width
-      const offscreen = document.createElement("canvas");
-      offscreen.width = drawX > canvas.width ? drawX : canvas.width;
-      offscreen.height = canvas.height;
-      const offCtx = offscreen.getContext("2d");
-
-      // Fill background
-      offCtx.fillStyle = "black";
-      offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
-
-      // Copy existing spectrogram pixels (if any)
-      offCtx.drawImage(canvas, 0, 0);
-
-      // Draw labels again on offscreen to ensure clarity
-      // We need to redraw all labels from 0 to drawX at intervals
-      offCtx.font = "12px sans-serif";
-      offCtx.textAlign = "center";
-      for (let x = 0; x <= drawX; x += labelInterval) {
-        const elapsed = x / 1; // approx seconds; better to sync with time but we estimate x px = seconds
-        const label = formatTime(elapsed);
-        offCtx.fillStyle = "black";
-        offCtx.fillRect(x - 25, usableHeight, 50, labelHeight);
-        offCtx.fillStyle = "white";
-        offCtx.fillText(label, x, usableHeight + 14);
-      }
-
-      offscreen.toBlob((blob) => {
-        if (!blob) {
-          alert("Failed to generate image.");
-          return;
-        }
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "spectrogram.png";
-        a.click();
-        URL.revokeObjectURL(url);
-      }, "image/png");
+      // Create compressed JPEG image
+      const jpegURL = canvas.toDataURL("image/jpeg", 0.7);
+      const link = document.createElement("a");
+      link.href = jpegURL;
+      link.download = "spectrogram.jpg";
+      link.click();
     });
   </script>
 </body>
