@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Live MP3 Spectrogram with Time Labels</title>
+  <title>Live MP3 Spectrogram with MMm SSs Labels</title>
   <style>
     body {
       background: #111;
@@ -54,12 +54,19 @@
     const startBtn = document.getElementById("startBtn");
     const speedSelect = document.getElementById("speed");
 
-    const height = canvas.height - 20;  // Reserve 20px for X-axis labels
+    const canvasHeight = canvas.height - 20;  // Reserve bottom 20px for labels
     const labelHeight = 20;
     let drawX = 0;
     let startTime = 0;
     let playbackRate = 1;
     let animationId;
+
+    function formatTime(seconds) {
+      const total = Math.floor(seconds);
+      const mm = Math.floor(total / 60).toString().padStart(2, '0');
+      const ss = (total % 60).toString().padStart(2, '0');
+      return `${mm}m ${ss}s`;
+    }
 
     startBtn.addEventListener("click", async () => {
       const file = fileInput.files[0];
@@ -109,19 +116,19 @@
           const value = dataArray[y];
           const hue = value * 1.5;
           ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
-          ctx.fillRect(drawX, height - y, 1, 1);
+          ctx.fillRect(drawX, canvasHeight - y, 1, 1);
         }
 
-        // Draw time label every 50 pixels
+        // Time label every 50 pixels
         if (drawX % 50 === 0) {
           const elapsed = (audioCtx.currentTime - startTime) * playbackRate;
           ctx.fillStyle = "black";
-          ctx.fillRect(drawX - 1, height, 50, labelHeight);
+          ctx.fillRect(drawX - 1, canvasHeight, 50, labelHeight);
 
           ctx.fillStyle = "white";
           ctx.font = "12px sans-serif";
           ctx.textAlign = "center";
-          ctx.fillText(elapsed.toFixed(1) + "s", drawX + 2, height + 12);
+          ctx.fillText(formatTime(elapsed), drawX + 2, canvasHeight + 14);
         }
 
         drawX = (drawX + 1) % canvas.width;
