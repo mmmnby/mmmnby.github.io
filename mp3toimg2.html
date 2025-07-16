@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Live Scrollable MP3 Spectrogram</title>
+  <meta charset="UTF-8">
+  <title>Wrapped Spectrogram</title>
   <style>
     body {
       background: #111;
@@ -25,20 +25,20 @@
 
     .canvas-container {
       width: 100vw;
-      overflow-x: auto;
+      overflow-x: hidden;
       border-top: 1px solid #444;
       border-bottom: 1px solid #444;
     }
 
     canvas {
-      background: black;
       display: block;
+      background: black;
     }
   </style>
 </head>
 <body>
 
-  <h1>Live Scrollable MP3 Spectrogram</h1>
+  <h1>Live Wrapped MP3 Spectrogram</h1>
 
   <div class="controls">
     <input type="file" id="audioFile" accept=".mp3" />
@@ -57,7 +57,7 @@
   </div>
 
   <div class="canvas-container">
-    <canvas id="spectrogram" height="256"></canvas>
+    <canvas id="spectrogram" height="300"></canvas>
   </div>
 
   <script>
@@ -72,11 +72,12 @@
     const speedSelect = document.getElementById("speed");
 
     const labelInterval = 100;
-    const labelHeight = 24;
-    const usableHeight = canvas.height - labelHeight;
+    const labelHeight = 20;
 
     let playbackRate = 1;
     let drawX = 0;
+    let drawY = 0;
+    let usableRowHeight;
     let animationId;
     let isPaused = false;
 
@@ -90,17 +91,19 @@
     }
 
     function expandCanvasIfNeeded() {
+      const rowHeight = analyser.frequencyBinCount + labelHeight;
       if (drawX >= canvas.width) {
-        const oldWidth = canvas.width;
-        const newWidth = oldWidth + 1000;
+        drawX = 0;
+        drawY += rowHeight;
 
+        // Expand canvas height
         const tempCanvas = document.createElement("canvas");
-        tempCanvas.width = newWidth;
-        tempCanvas.height = canvas.height;
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height + rowHeight;
         const tempCtx = tempCanvas.getContext("2d");
 
         tempCtx.drawImage(canvas, 0, 0);
-        canvas.width = newWidth;
+        canvas.height += rowHeight;
         ctx.drawImage(tempCanvas, 0, 0);
       }
     }
@@ -116,25 +119,23 @@
         const value = dataArray[y];
         const hue = value * 1.5;
         ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
-        ctx.fillRect(drawX, usableHeight - y, 1, 1);
+        ctx.fillRect(drawX, drawY + (analyser.frequencyBinCount - y - 1), 1, 1);
       }
 
+      // Draw time label every 100px
       if (drawX % labelInterval === 0) {
         const elapsed = audio.currentTime;
         const label = formatTime(elapsed);
-
         ctx.fillStyle = "black";
-        ctx.fillRect(drawX - 30, usableHeight, 60, labelHeight);
-
+        ctx.fillRect(drawX - 25, drawY + analyser.frequencyBinCount, 50, labelHeight);
         ctx.fillStyle = "white";
-        ctx.font = "14px monospace";
+        ctx.font = "12px sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(label, drawX, usableHeight + 16);
+        ctx.fillText(label, drawX, drawY + analyser.frequencyBinCount + 14);
       }
 
       drawX++;
       animationId = requestAnimationFrame(drawSpectrogram);
-      container.scrollLeft = drawX - container.clientWidth + 100;
     }
 
     startBtn.addEventListener("click", async () => {
@@ -166,12 +167,14 @@
       analyser.connect(audioCtx.destination);
 
       canvas.width = window.innerWidth;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+      canvas.height = analyser.frequencyBinCount + labelHeight;
       drawX = 0;
+      drawY = 0;
       isPaused = false;
       pauseBtn.disabled = false;
       pauseBtn.textContent = "Pause";
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       audio.play();
       drawSpectrogram();
@@ -194,27 +197,10 @@
     });
 
     saveBtn.addEventListener("click", () => {
-      if (!audio && drawX === 0) return;
-
-      // Pause drawing if running
-      if (!isPaused) {
-        isPaused = true;
-        audio.pause();
-        cancelAnimationFrame(animationId);
-        pauseBtn.textContent = "Resume";
-      }
-
-      // Create a trimmed canvas for just the drawn area
-      const trimmedCanvas = document.createElement("canvas");
-      trimmedCanvas.width = drawX;
-      trimmedCanvas.height = canvas.height;
-      const trimmedCtx = trimmedCanvas.getContext("2d");
-      trimmedCtx.drawImage(canvas, 0, 0, drawX, canvas.height, 0, 0, drawX, canvas.height);
-
-      const url = trimmedCanvas.toDataURL("image/png");
+      const url = canvas.toDataURL("image/png");
       const a = document.createElement("a");
       a.href = url;
-      a.download = "spectrogram.png";
+      a.download = "wrapped-spectrogram.png";
       a.click();
     });
   </script>
