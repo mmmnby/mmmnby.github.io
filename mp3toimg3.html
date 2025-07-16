@@ -2,28 +2,27 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Spectrogram Player (Precise Overlay)</title>
+<title>Spectrogram Player – Final</title>
 <style>
-  body { background:#111; color:#fff; font-family:sans-serif; margin:0; text-align:center; }
-  .controls { padding:10px; }
-  .controls>* { margin:4px; font-size:16px; }
-  #timeDisplay { margin-top:6px; font-size:14px; font-style:italic; }
-  .canvas-container { position:relative; display:inline-block; margin-bottom:20px; }
-  canvas.spectro { background:#000; display:block; }
-  canvas.overlay { position:absolute;left:0;top:0;pointer-events:auto; }
-  #navButtons { margin:10px; display:none; }
-  #navButtons button { margin:0 6px; font-size:16px; padding:6px 12px; }
+  body { background:#111; color:#fff; font-family:sans-serif; margin:0; text-align:center }
+  .controls { padding:10px }
+  .controls>* { margin:4px; font-size:16px }
+  #timeDisplay { margin-top:6px; font-size:14px; font-style:italic }
+  .canvas-container { position:relative; display:inline-block; margin-bottom:20px }
+  canvas.spectro { background:#000; display:block }
+  canvas.overlay { position:absolute; left:0; top:0; pointer-events:auto }
+  #navButtons { margin:10px; display:none }
+  #navButtons button { margin:0 6px; font-size:16px; padding:6px 12px }
 </style>
 </head>
 <body>
 
-<h1>Spectrogram Player (Precise Overlay)</h1>
+<h1>Spectrogram Player – Final Version</h1>
 
 <div class="controls">
   <input type="file" id="audioFile" accept=".mp3">
-  <label>Speed:
-    <select id="speed"><option>1</option><option>2</option><option>4</option>
-    <option>30</option><option>60</option><option>120</option></select>×
+  <label>Phase 1 Speed:
+    <select id="speed"><option>1</option><option>2</option><option>4</option><option>30</option><option>60</option><option>120</option></select>×
   </label>
   <button id="startBtn">Play</button>
   <button id="pauseBtn" disabled>Pause</button>
@@ -40,13 +39,14 @@
 </div>
 
 <script>
+/* Constants */
 const canvasWidth = window.innerWidth;
 const canvasHeight = 300;
-const tickHeight = 10;
-const labelHeight = 20;
-const usableHeight = canvasHeight - tickHeight - labelHeight;
-const labelInterval = 100, labelPadding=6;
+const tickH = 10, labelH = 20;
+const usableH = canvasHeight - tickH - labelH;
+const labelInterval = 100, labelPad=6;
 
+/* DOM */
 const fileInput = document.getElementById('audioFile');
 const speedSelect = document.getElementById('speed');
 const startBtn = document.getElementById('startBtn');
@@ -59,180 +59,195 @@ const back15 = document.getElementById('back15');
 const masterToggle = document.getElementById('masterToggle');
 const forward15 = document.getElementById('forward15');
 
-let audio, audioCtx, analyser, dataArray;
-let drawX = 0, spectrogramComplete=false, isPaused=false, animationId;
-let spectroCanvases=[], overlayCanvases=[], rowTimestamps=[];
+/* State */
+let audio, audioCtx, analyser, dataArr;
+let drawX = 0, spectroComplete=false, isPaused=false, animationId;
+let spectros=[], overlays=[], rowTimes=[];
 let cursorTimer;
 
-function formatTime(s){
-  const h=Math.floor(s/3600),
-        m=Math.floor((s%3600)/60),
-        sec=Math.floor(s%60);
+function fmt(s) {
+  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=Math.floor(s%60);
   return `${h}h${m}m${sec}s`;
 }
 
-function updateTimeDisplay(){
-  if(audio) timeDisplay.textContent = `Current: ${formatTime(audio.currentTime)}`;
+function updateTime() {
+  if (!audio) return;
+  timeDisplay.textContent = `Current: ${fmt(audio.currentTime)} / Total: ${fmt(audio.duration)}`;
 }
 
-function createNewRow(){
-  const rowDiv = document.createElement('div');
-  rowDiv.className='canvas-container';
-  const sc = document.createElement('canvas');
+function createRow() {
+  const div = document.createElement('div');
+  div.className='canvas-container';
+
+  const sc=document.createElement('canvas');
   sc.width=canvasWidth; sc.height=canvasHeight;
   sc.className='spectro';
-  const sctx = sc.getContext('2d');
+  const sctx=sc.getContext('2d');
   sctx.fillStyle='#000'; sctx.fillRect(0,0,canvasWidth,canvasHeight);
-  rowDiv.appendChild(sc);
-  spectroCanvases.push({canvas:sc, ctx:sctx});
-  
-  const ov = document.createElement('canvas');
+  div.appendChild(sc);
+  spectros.push({canvas:sc,ctx:sctx});
+
+  const ov=document.createElement('canvas');
   ov.width=canvasWidth; ov.height=canvasHeight;
   ov.className='overlay';
-  const ovctx = ov.getContext('2d');
-  rowDiv.appendChild(ov);
-  overlayCanvases.push({canvas:ov, ctx:ovctx});
-  
-  rowTimestamps.push(audio.currentTime);
+  const ovctx=ov.getContext('2d');
+  div.appendChild(ov);
+  overlays.push({canvas:ov,ctx:ovctx});
 
-  ov.addEventListener('click',e=>{
-    if(!spectrogramComplete) return;
-    const rect=ov.getBoundingClientRect(), x=e.clientX-rect.left;
-    const idx = overlayCanvases.findIndex(o=>o.canvas===ov);
-    const t0 = rowTimestamps[idx], nextT = rowTimestamps[idx+1] || audio.duration;
-    const t = t0 + (x/canvasWidth)*(nextT-t0);
-    audio.currentTime = t;
-    if(!audio.paused) audio.play();
+  rowTimes.push(audio.currentTime);
+  // single-row extrapolation
+  if (spectros.length===1) rowTimes[1]=audio.duration;
+
+  ov.addEventListener('click', e=>{
+    if (!spectroComplete) return;
+    const rIndex = overlays.findIndex(o=>o.canvas===ov);
+    const x = e.clientX - ov.getBoundingClientRect().left;
+    const t0=rowTimes[rIndex];
+    const t1=rowTimes[rIndex+1] !== undefined ? rowTimes[rIndex+1] : audio.duration;
+    audio.currentTime = t0 + (x/canvasWidth)*(t1-t0);
+    audio.play().catch(()=>{
+      audio = new Audio(audio.src);
+      audio.currentTime = rowTimes[0] + (x/canvasWidth)*(audio.duration - rowTimes[0]);
+      audio.play();
+    });
   });
 
-  rowsContainer.appendChild(rowDiv);
+  rowsContainer.appendChild(div);
   drawX=0;
 }
 
-function drawSpectrogram(){
-  if(!audio || audio.paused || audio.ended || isPaused)return;
-  analyser.getByteFrequencyData(dataArray);
-  if(drawX>=canvasWidth) createNewRow();
-  const {ctx} = spectroCanvases[spectroCanvases.length-1];
-  for(let y=0;y<analyser.frequencyBinCount;y++){
-    const v=dataArray[y];
-    ctx.fillStyle=`hsl(${v*1.5},100%,50%)`;
-    ctx.fillRect(drawX,usableHeight - y,1,1);
+function drawSpectro() {
+  if (!audio||audio.paused||audio.ended||isPaused) return;
+  analyser.getByteFrequencyData(dataArr);
+  if (drawX>=canvasWidth) createRow();
+  const sctx = spectros[spectros.length-1].ctx;
+  for (let y=0;y<analyser.frequencyBinCount;y++){
+    const v=dataArr[y];
+    sctx.fillStyle=`hsl(${v*1.5},100%,50%)`;
+    sctx.fillRect(drawX, usableH - y,1,1);
   }
-  const elapsed=Math.floor(audio.currentTime);
-  if(elapsed%60===0){
-    ctx.strokeStyle='#fff';
-    ctx.lineWidth = (elapsed%900===0?2:1);
-    ctx.beginPath();
-    ctx.moveTo(drawX+0.5,usableHeight);
-    ctx.lineTo(drawX+0.5,usableHeight+tickHeight);
-    ctx.stroke();
+  const e=Math.floor(audio.currentTime);
+  if(e%60===0){
+    sctx.strokeStyle='#fff';
+    sctx.lineWidth = (e%900===0?2:1);
+    sctx.beginPath();
+    sctx.moveTo(drawX+0.5,usableH);
+    sctx.lineTo(drawX+0.5,usableH+tickH);
+    sctx.stroke();
   }
-  if(drawX%labelInterval===0){
-    const label=formatTime(audio.currentTime);
-    const tw=ctx.measureText(label).width;
-    ctx.fillStyle='#000';
-    ctx.fillRect(drawX-tw/2-labelPadding,usableHeight+tickHeight,tw+2*labelPadding,labelHeight);
-    ctx.fillStyle='#fff';
-    ctx.textAlign='center'; ctx.textBaseline='top';
-    ctx.font='12px sans-serif';
-    ctx.fillText(label,drawX,usableHeight+tickHeight+2);
+  if (!(drawX%labelInterval)) {
+    const lab=fmt(audio.currentTime);
+    const w=sctx.measureText(lab).width;
+    sctx.fillStyle='#000';
+    sctx.fillRect(drawX-w/2-labelPad,usableH+tickH,w+2*labelPad,labelH);
+    sctx.fillStyle='#fff';
+    sctx.textAlign='center'; sctx.textBaseline='top';
+    sctx.font='12px sans-serif';
+    sctx.fillText(lab,drawX,usableH+tickH+2);
   }
   drawX++;
-  updateTimeDisplay();
-  animationId=requestAnimationFrame(drawSpectrogram);
-  if(audio.ended || audio.currentTime>=audio.duration){
-    spectrogramComplete=true;
+  updateTime();
+  animationId=requestAnimationFrame(drawSpectro);
+
+  if(audio.ended||audio.currentTime>=audio.duration){
+    spectroComplete=true;
     navButtons.style.display='block';
     audio.currentTime=0;
-    drawSeekOverlay();
+    drawOverlay();
   }
 }
 
-function clearOverlay(){
-  overlayCanvases.forEach(o=>o.ctx.clearRect(0,0,canvasWidth,canvasHeight));
+function clearOv() {
+  overlays.forEach(o=>o.ctx.clearRect(0,0,canvasWidth,canvasHeight));
 }
 
-function drawSeekOverlay(){
-  if(!spectrogramComplete||!audio)return;
-  clearOverlay();
+function drawOverlay(){
+  if(!spectroComplete||!audio)return;
+  clearOv();
   const t=audio.currentTime;
-  const idx = rowTimestamps.findIndex((ts,i)=> t>=ts && (rowTimestamps[i+1]===undefined||t<rowTimestamps[i+1]));
+  const idx = rowTimes.slice(0, -1).findIndex((tt,i)=> t>=tt && (rowTimes[i+1]===undefined||t<rowTimes[i+1]));
   if(idx<0)return;
-  const t0=rowTimestamps[idx];
-  const next=rowTimestamps[idx+1]||audio.duration;
-  const frac=(t-t0)/(next-t0);
-  const x = Math.round(frac*canvasWidth);
-  const {ctx} = overlayCanvases[idx];
-  ctx.strokeStyle='red'; ctx.lineWidth=1; ctx.beginPath();
-  ctx.moveTo(x+0.5,0); ctx.lineTo(x+0.5,canvasHeight);
-  ctx.stroke();
-  updateTimeDisplay();
+  const t0=rowTimes[idx], t1=rowTimes[idx+1] || audio.duration;
+  const fx=(t-t0)/(t1-t0);
+  const x=Math.round(fx*canvasWidth);
+  const ctx=overlays[idx].ctx;
+  ctx.lineWidth=4;
+  ctx.strokeStyle='black';
+  ctx.beginPath(); ctx.moveTo(x+0.5,0); ctx.lineTo(x+0.5,canvasHeight); ctx.stroke();
+  ctx.lineWidth=2;
+  ctx.strokeStyle='white'; ctx.beginPath(); ctx.moveTo(x+0.5,0); ctx.lineTo(x+0.5,canvasHeight); ctx.stroke();
+  ctx.lineWidth=1;
+  ctx.strokeStyle='red'; ctx.beginPath(); ctx.moveTo(x+0.5,0); ctx.lineTo(x+0.5,canvasHeight); ctx.stroke();
 }
 
-startBtn.onclick = ()=>{
+startBtn.onclick=()=>{
   const file=fileInput.files[0];
-  if(!file)return alert('Select an MP3 file.');
+  if(!file) return alert('Select an MP3 file.');
   cancelAnimationFrame(animationId);
   clearInterval(cursorTimer);
-  spectrogramComplete=false;
-  rowTimestamps=[]; spectroCanvases=[]; overlayCanvases=[];
+  spectroComplete=false;
+  rowTimes=[]; spectros=[]; overlays=[];
   rowsContainer.innerHTML=''; navButtons.style.display='none';
-
+  
   audio=new Audio(URL.createObjectURL(file));
   audio.crossOrigin='anonymous';
-  audio.playbackRate=+speedSelect.value;
-  audio.onended = ()=>{
-    spectrogramComplete=true;
+  audio.playbackRate=1;
+  audio.onended=()=>{
+    spectroComplete=true;
     navButtons.style.display='block';
     audio.currentTime=0;
-    drawSeekOverlay();
+    drawOverlay();
   };
-
+  
   audioCtx=new (window.AudioContext||window.webkitAudioContext)();
   const src=audioCtx.createMediaElementSource(audio);
-  analyser=audioCtx.createAnalyser(); analyser.fftSize=512;
-  dataArray=new Uint8Array(analyser.frequencyBinCount);
+  analyser=audioCtx.createAnalyser();
+  analyser.fftSize=512;
+  dataArr=new Uint8Array(analyser.frequencyBinCount);
   src.connect(analyser); analyser.connect(audioCtx.destination);
 
-  createNewRow();
+  createRow();
   isPaused=false; pauseBtn.disabled=false; startBtn.disabled=true;
+  audio.playbackRate = +speedSelect.value; // Phase 1 speed
   audio.play();
-  drawSpectrogram();
+  drawSpectro();
 };
 
-pauseBtn.onclick = ()=>{
+pauseBtn.onclick=()=>{
   if(!audio)return;
-  isPaused = !isPaused;
+  isPaused=!isPaused;
   if(isPaused){
     audio.pause();
     cancelAnimationFrame(animationId);
     clearInterval(cursorTimer);
     pauseBtn.textContent='Resume';
   } else {
-    audio.play();
-    if(!spectrogramComplete) drawSpectrogram();
+    audio.play().catch(()=>{
+      audio = new Audio(audio.src);
+      audio.currentTime = audio.currentTime;
+      audio.play();
+    });
+    if(!spectroComplete) drawSpectro();
     else {
-      drawSeekOverlay();
-      cursorTimer = setInterval(drawSeekOverlay,100);
+      drawOverlay();
+      cursorTimer=setInterval(drawOverlay,100);
     }
     pauseBtn.textContent='Pause';
   }
 };
 
-back15.onclick = ()=>{ if(audio) audio.currentTime=Math.max(0,audio.currentTime-15); };
-forward15.onclick = ()=>{ if(audio) audio.currentTime=Math.min(audio.duration,audio.currentTime+15); };
-masterToggle.onclick = ()=> pauseBtn.click();
+back15.onclick=()=>{ if(audio) audio.currentTime=Math.max(0,audio.currentTime-15); };
+forward15.onclick=()=>{ if(audio) audio.currentTime=Math.min(audio.duration,audio.currentTime+15); };
+masterToggle.onclick=()=>pauseBtn.click();
 
-saveBtn.onclick = ()=>{
-  const m = spectroCanvases.length;
-  const merged=document.createElement('canvas');
-  merged.width = canvasWidth;
-  merged.height = canvasHeight*m;
-  const mctx=merged.getContext('2d');
-  spectroCanvases.forEach((o,i)=>mctx.drawImage(o.canvas,0,i*canvasHeight));
+saveBtn.onclick=()=>{
+  const m=spectros.length;
+  const out=document.createElement('canvas');
+  out.width=canvasWidth; out.height=canvasHeight*m;
+  const octx=out.getContext('2d');
+  spectros.forEach((s,i)=>octx.drawImage(s.canvas,0,i*canvasHeight));
   const a=document.createElement('a');
-  a.href=merged.toDataURL('image/png');
+  a.href=out.toDataURL('image/png');
   a.download='spectrogram.png';
   a.click();
 };
