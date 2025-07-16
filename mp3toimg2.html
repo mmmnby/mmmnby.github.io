@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Stacked Spectrogram with Time Ticks</title>
+  <meta charset="UTF-8">
+  <title>Spectrogram with Adaptive Tick Marks</title>
   <style>
     body {
       background: #111;
@@ -38,7 +38,7 @@
 </head>
 <body>
 
-  <h1>Stacked Spectrogram with Ticks</h1>
+  <h1>Spectrogram with Time Tick Marks</h1>
 
   <div class="controls">
     <input type="file" id="audioFile" accept=".mp3" />
@@ -53,13 +53,13 @@
     </select>
     <button id="startBtn">Start</button>
     <button id="pauseBtn" disabled>Pause</button>
-    <button id="saveBtn">Download PNG</button>
+    <button id="saveBtn">Download</button>
   </div>
 
   <div class="canvas-container" id="canvasContainer"></div>
 
   <script>
-    const container = document.getElementById("canvasContainer");
+    const canvasContainer = document.getElementById("canvasContainer");
     const fileInput = document.getElementById("audioFile");
     const startBtn = document.getElementById("startBtn");
     const pauseBtn = document.getElementById("pauseBtn");
@@ -75,16 +75,14 @@
     let currentCanvas, ctx;
     let drawX = 0;
     let isPaused = false;
-    let animationId;
+    let animationId = null;
     let playbackRate = 1;
-
-    const tickEveryPx = 100;
 
     function createNewCanvas() {
       const canvas = document.createElement("canvas");
       canvas.width = canvasWidth;
       canvas.height = canvasHeight;
-      container.appendChild(canvas);
+      canvasContainer.appendChild(canvas);
       currentCanvas = canvas;
       ctx = canvas.getContext("2d");
       ctx.fillStyle = "black";
@@ -99,7 +97,7 @@
 
       let label = "";
       if (hrs > 0) label += `${hrs}h`;
-      if (hrs > 0 || mins > 0) label += `${mins}m`;
+      if (mins > 0 || hrs > 0) label += `${mins}m`;
       label += `${secs}s`;
       return label;
     }
@@ -116,31 +114,40 @@
         ctx.fillRect(drawX, usableHeight - y, 1, 1);
       }
 
+      // Calculate approximate elapsed time based on playbackRate
       const elapsed = audio.currentTime;
 
-      // Ticks and labels every tickEveryPx
-      if (drawX % tickEveryPx === 0) {
-        const timeInSeconds = elapsed;
-        const label = formatTime(timeInSeconds);
-        ctx.strokeStyle = "white";
+      // Draw major tick every 15 minutes, minor every minute
+      const seconds = Math.floor(elapsed);
+      if (seconds % 60 === 0) {
+        // Minor tick every 1 minute
+        ctx.strokeStyle = "#888";
         ctx.beginPath();
-
-        const isMajor = (Math.floor(timeInSeconds / 60 / playbackRate) % 15 === 0);
-        const tickHeight = isMajor ? 10 : 5;
-
         ctx.moveTo(drawX, usableHeight);
-        ctx.lineTo(drawX, usableHeight + tickHeight);
+        ctx.lineTo(drawX, usableHeight + 5);
         ctx.stroke();
+      }
+      if (seconds % (15 * 60) === 0) {
+        // Major tick every 15 minutes
+        ctx.strokeStyle = "#fff";
+        ctx.beginPath();
+        ctx.moveTo(drawX, usableHeight);
+        ctx.lineTo(drawX, usableHeight + 10);
+        ctx.stroke();
+      }
 
-        if (isMajor) {
-          ctx.fillStyle = "white";
-          ctx.font = "12px sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(label, drawX, usableHeight + 20);
-        }
+      // Time label every 100px
+      if (drawX % 100 === 0) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(drawX - 25, usableHeight + 10, 50, labelHeight);
+        ctx.fillStyle = "white";
+        ctx.font = "12px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(formatTime(elapsed), drawX, usableHeight + 25);
       }
 
       drawX++;
+
       if (drawX >= canvasWidth) {
         createNewCanvas();
       }
@@ -148,7 +155,7 @@
       animationId = requestAnimationFrame(drawSpectrogram);
     }
 
-    startBtn.addEventListener("click", async () => {
+    startBtn.addEventListener("click", () => {
       const file = fileInput.files[0];
       if (!file) {
         alert("Please select an MP3 file.");
@@ -161,12 +168,11 @@
         URL.revokeObjectURL(audio.src);
       }
 
-      container.innerHTML = "";
+      canvasContainer.innerHTML = "";
       createNewCanvas();
 
-      const blobURL = URL.createObjectURL(file);
-      audio = new Audio(blobURL);
-      audio.crossOrigin = "anonymous";
+      const url = URL.createObjectURL(file);
+      audio = new Audio(url);
       playbackRate = parseFloat(speedSelect.value);
       audio.playbackRate = playbackRate;
 
@@ -179,9 +185,9 @@
       source.connect(analyser);
       analyser.connect(audioCtx.destination);
 
+      isPaused = false;
       pauseBtn.disabled = false;
       pauseBtn.textContent = "Pause";
-      isPaused = false;
 
       audio.play();
       drawSpectrogram();
@@ -189,37 +195,34 @@
 
     pauseBtn.addEventListener("click", () => {
       if (!audio) return;
-
       isPaused = !isPaused;
       pauseBtn.textContent = isPaused ? "Resume" : "Pause";
 
-      if (!isPaused) {
-        audio.play();
-        drawSpectrogram();
-      } else {
+      if (isPaused) {
         audio.pause();
         cancelAnimationFrame(animationId);
+      } else {
+        audio.play();
+        drawSpectrogram();
       }
     });
 
     saveBtn.addEventListener("click", () => {
-      const mergedCanvas = document.createElement("canvas");
-      const totalHeight = container.childNodes.length * canvasHeight;
+      const totalHeight = canvasContainer.childNodes.length * canvasHeight;
+      const outputCanvas = document.createElement("canvas");
+      outputCanvas.width = canvasWidth;
+      outputCanvas.height = totalHeight;
 
-      mergedCanvas.width = canvasWidth;
-      mergedCanvas.height = totalHeight;
+      const outputCtx = outputCanvas.getContext("2d");
 
-      const mergedCtx = mergedCanvas.getContext("2d");
-
-      container.childNodes.forEach((canvas, i) => {
-        mergedCtx.drawImage(canvas, 0, i * canvasHeight);
+      canvasContainer.childNodes.forEach((canvas, i) => {
+        outputCtx.drawImage(canvas, 0, i * canvasHeight);
       });
 
-      const url = mergedCanvas.toDataURL("image/png");
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "spectrogram.png";
-      a.click();
+      const link = document.createElement("a");
+      link.href = outputCanvas.toDataURL("image/png");
+      link.download = "spectrogram.png";
+      link.click();
     });
   </script>
 </body>
