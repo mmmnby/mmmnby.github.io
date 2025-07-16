@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>MP3 Spectrogram Viewer (10-min Paging)</title>
+  <title>MP3 Spectrogram Viewer (Streamed Segments)</title>
   <style>
     body {
       background: #111;
@@ -12,10 +12,10 @@
       padding: 20px;
     }
     canvas {
-      display: block;
-      margin: 20px auto;
       background: black;
       border: 1px solid #555;
+      display: block;
+      margin: 20px auto;
     }
     .controls {
       margin: 20px 0;
@@ -40,13 +40,10 @@
 
   <div class="controls">
     <input type="file" id="audioInput" accept=".mp3">
-    <button id="processBtn">Load & Process</button><br>
-
-    <button id="prevBtn" disabled>◀ Prev</button>
-    <button id="nextBtn" disabled>Next ▶</button>
+    <select id="timeSelector" disabled></select>
+    <button id="processBtn" disabled>Process Segment</button>
     <button id="saveBtn" disabled>Save Image</button>
-
-    <div id="status">Waiting for file...</div>
+    <div id="status">Select an MP3 file to begin.</div>
   </div>
 
   <canvas id="spectrogram" width="1000" height="256"></canvas>
@@ -54,26 +51,20 @@
   <script>
     const canvas = document.getElementById("spectrogram");
     const ctx = canvas.getContext("2d");
-
+    const fileInput = document.getElementById("audioInput");
     const processBtn = document.getElementById("processBtn");
     const saveBtn = document.getElementById("saveBtn");
-    const nextBtn = document.getElementById("nextBtn");
-    const prevBtn = document.getElementById("prevBtn");
-    const fileInput = document.getElementById("audioInput");
-    const statusText = document.getElementById("status");
+    const timeSelector = document.getElementById("timeSelector");
+    const status = document.getElementById("status");
 
-    let audioBuffer = null;
-    let pageIndex = 0;
-    const sliceDuration = 600; // 10 minutes in seconds
-    const canvasWidth = canvas.width;
-    const canvasHeight = canvas.height;
-    const fftSize = 512;
-    const hopSize = fftSize / 2;
-    const bins = fftSize / 2;
+    let audioBlob = null;
+    let totalDuration = 0;
+    let fftSize = 512;
+    let pageDuration = 600; // 10 minutes in seconds
 
     function setStatus(msg, isError = false) {
-      statusText.textContent = "Status: " + msg;
-      statusText.classList.toggle("error", isError);
+      status.textContent = "Status: " + msg;
+      status.classList.toggle("error", isError);
     }
 
     function drawLabels(sampleRate) {
@@ -84,43 +75,37 @@
       const nyquist = sampleRate / 2;
 
       for (let y = 0; y <= 4; y++) {
-        const pos = (y / 4) * canvasHeight;
+        const pos = (y / 4) * canvas.height;
         const freq = ((4 - y) / 4) * nyquist;
         ctx.fillText(freq.toFixed(0) + " Hz", 58, pos);
       }
 
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      const timePerPixel = sliceDuration / canvasWidth;
       for (let x = 0; x <= 10; x++) {
-        const px = 60 + x * ((canvasWidth - 60) / 10);
-        const seconds = pageIndex * sliceDuration + x * (sliceDuration / 10);
-        const label = (seconds / 60).toFixed(1) + " min";
-        ctx.fillText(label, px, canvasHeight - 12);
+        const px = 60 + x * ((canvas.width - 60) / 10);
+        const seconds = timeSelector.value * 600 + x * 60;
+        const label = (seconds / 60).toFixed(0) + " min";
+        ctx.fillText(label, px, canvas.height - 12);
       }
     }
 
-    async function renderPage(index) {
-      if (!audioBuffer) return;
-
+    async function renderSpectrogram(audioBuffer) {
       const data = audioBuffer.getChannelData(0);
       const sampleRate = audioBuffer.sampleRate;
-      const startSample = Math.floor(index * sliceDuration * sampleRate);
-      const endSample = Math.min(startSample + (sliceDuration * sampleRate), data.length);
-
-      const frameCount = Math.floor((endSample - startSample - fftSize) / hopSize);
-      const pixels = Math.min(canvasWidth - 60, frameCount);
+      const fftBins = fftSize / 2;
+      const hopSize = fftSize / 2;
+      const frameCount = Math.floor((data.length - fftSize) / hopSize);
+      const pixels = Math.min(canvas.width - 60, frameCount);
       const fft = new FFT(fftSize);
       const input = new Array(fftSize).fill(0);
       const output = fft.createComplexArray();
 
       ctx.fillStyle = "black";
-      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       for (let x = 0; x < pixels; x++) {
-        const offset = startSample + x * hopSize;
-        if (offset + fftSize >= data.length) break;
-
+        const offset = x * hopSize;
         for (let i = 0; i < fftSize; i++) {
           const sample = data[offset + i] || 0;
           const window = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (fftSize - 1)));
@@ -130,77 +115,89 @@
         fft.realTransform(output, input);
         fft.completeSpectrum(output);
 
-        for (let y = 0; y < bins && y < canvasHeight; y++) {
+        for (let y = 0; y < fftBins && y < canvas.height; y++) {
           const re = output[2 * y];
           const im = output[2 * y + 1];
           const mag = Math.sqrt(re * re + im * im);
           const dB = Math.log10(mag + 1) * 40;
           const hue = Math.min(255, Math.floor(dB * 5));
           ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
-          ctx.fillRect(x + 60, canvasHeight - 1 - y, 1, 1);
+          ctx.fillRect(x + 60, canvas.height - 1 - y, 1, 1);
         }
 
         if (x % 100 === 0) await new Promise(r => requestAnimationFrame(r));
       }
 
       drawLabels(sampleRate);
-      saveBtn.disabled = false;
-      setStatus(`Showing page ${pageIndex + 1}`);
     }
 
     processBtn.addEventListener("click", async () => {
-      const file = fileInput.files[0];
-      if (!file) return setStatus("Please select an MP3 file first.", true);
+      const startMinute = parseInt(timeSelector.value);
+      const startTime = startMinute * 60;
+      const endTime = startTime + pageDuration;
+      const duration = totalDuration;
 
-      processBtn.disabled = true;
-      setStatus("Loading and decoding...");
+      const fileSize = audioBlob.size;
+      const startByte = Math.floor((startTime / duration) * fileSize);
+      const endByte = Math.floor((endTime / duration) * fileSize);
+
+      const slice = audioBlob.slice(startByte, endByte);
+      setStatus(`Decoding audio from ${startMinute}–${startMinute + 10} min...`);
 
       try {
+        const arrayBuffer = await slice.arrayBuffer();
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const buffer = await file.arrayBuffer();
-        audioBuffer = await audioCtx.decodeAudioData(buffer);
-        pageIndex = 0;
-
-        const totalSlices = Math.ceil(audioBuffer.duration / sliceDuration);
-        nextBtn.disabled = totalSlices <= 1;
-        prevBtn.disabled = true;
-
-        await renderPage(pageIndex);
+        const buffer = await audioCtx.decodeAudioData(arrayBuffer);
+        await renderSpectrogram(buffer);
+        saveBtn.disabled = false;
+        setStatus(`Rendered spectrogram from ${startMinute}–${startMinute + 10} minutes`);
       } catch (err) {
         console.error(err);
         setStatus("Error decoding audio: " + err.message, true);
-      } finally {
-        processBtn.disabled = false;
-      }
-    });
-
-    nextBtn.addEventListener("click", async () => {
-      const totalSlices = Math.ceil(audioBuffer.duration / sliceDuration);
-      if (pageIndex < totalSlices - 1) {
-        pageIndex++;
-        prevBtn.disabled = false;
-        if (pageIndex === totalSlices - 1) nextBtn.disabled = true;
-        await renderPage(pageIndex);
-      }
-    });
-
-    prevBtn.addEventListener("click", async () => {
-      if (pageIndex > 0) {
-        pageIndex--;
-        nextBtn.disabled = false;
-        if (pageIndex === 0) prevBtn.disabled = true;
-        await renderPage(pageIndex);
       }
     });
 
     saveBtn.addEventListener("click", () => {
       const link = document.createElement("a");
-      link.download = `spectrogram_page_${pageIndex + 1}.png`;
+      link.download = `spectrogram_${timeSelector.value}_min.png`;
       link.href = canvas.toDataURL("image/png");
       link.click();
     });
 
-    // Inlined FFT.js
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      setStatus("Loading file duration...");
+
+      const audioElem = new Audio();
+      audioBlob = file;
+      const url = URL.createObjectURL(file);
+
+      audioElem.addEventListener("loadedmetadata", () => {
+        totalDuration = audioElem.duration;
+        const totalMinutes = Math.floor(totalDuration / 60);
+        timeSelector.innerHTML = "";
+
+        for (let i = 0; i < totalMinutes; i += 10) {
+          const opt = document.createElement("option");
+          opt.value = i;
+          opt.textContent = `${i}–${i + 10} min`;
+          timeSelector.appendChild(opt);
+        }
+
+        timeSelector.disabled = false;
+        processBtn.disabled = false;
+        setStatus("Ready. Select a segment and click Process.");
+      });
+
+      audioElem.onerror = () => {
+        setStatus("Could not load MP3 metadata. Try another file.", true);
+      };
+
+      audioElem.src = url;
+    });
+
+    // Inlined FFT class
     class FFT {
       constructor(size) {
         this.size = size;
