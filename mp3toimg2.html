@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Spectrogram with Time Ticks</title>
+  <meta charset="UTF-8">
+  <title>Wrapped MP3 Spectrogram Viewer</title>
   <style>
     body {
       background: #111;
@@ -34,11 +34,16 @@
       display: block;
       margin: 10px 0;
     }
+
+    #navButtons {
+      display: none;
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
 
-  <h1>Wrapped Spectrogram with Time Ticks</h1>
+  <h1>Multi-Line Spectrogram</h1>
 
   <div class="controls">
     <input type="file" id="audioFile" accept=".mp3" />
@@ -53,49 +58,56 @@
     </select>
     <button id="startBtn">Start</button>
     <button id="pauseBtn" disabled>Pause</button>
-    <button id="saveBtn">Download</button>
+    <button id="saveBtn">Download PNG</button>
+  </div>
+
+  <div id="navButtons">
+    <button id="leftBtn">⏪ -15s</button>
+    <button id="rightBtn">+15s ⏩</button>
   </div>
 
   <div class="canvas-container" id="canvasContainer"></div>
 
   <script>
-    const canvasContainer = document.getElementById("canvasContainer");
+    const container = document.getElementById("canvasContainer");
     const fileInput = document.getElementById("audioFile");
     const startBtn = document.getElementById("startBtn");
     const pauseBtn = document.getElementById("pauseBtn");
     const saveBtn = document.getElementById("saveBtn");
     const speedSelect = document.getElementById("speed");
+    const navButtons = document.getElementById("navButtons");
+    const leftBtn = document.getElementById("leftBtn");
+    const rightBtn = document.getElementById("rightBtn");
 
     const canvasWidth = window.innerWidth;
     const canvasHeight = 300;
     const labelHeight = 30;
     const usableHeight = canvasHeight - labelHeight;
 
+    let playbackRate = 1;
     let audio, audioCtx, analyser, dataArray;
     let currentCanvas, ctx;
     let drawX = 0;
     let isPaused = false;
     let animationId;
-    let playbackRate = 1;
 
-    const pxPerSecond = 60; // 60 pixels per second at 1× speed
-    const labelSpacingPx = 100;
-
-    function formatTime(seconds) {
-      const hrs = Math.floor(seconds / 3600);
-      const mins = Math.floor((seconds % 3600) / 60);
-      const secs = Math.floor(seconds % 60);
-      return `${hrs}h${mins}m${secs}s`;
-    }
+    const labelInterval = 100;
 
     function createNewCanvas() {
       const canvas = document.createElement("canvas");
       canvas.width = canvasWidth;
       canvas.height = canvasHeight;
-      canvasContainer.appendChild(canvas);
+      container.appendChild(canvas);
       currentCanvas = canvas;
       ctx = canvas.getContext("2d");
       drawX = 0;
+    }
+
+    function formatTime(seconds) {
+      const hrs = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) % 3600 / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${hrs}h${mins}m${secs}s`;
     }
 
     function drawSpectrogram() {
@@ -103,6 +115,7 @@
 
       analyser.getByteFrequencyData(dataArray);
 
+      // Draw frequency data
       for (let y = 0; y < analyser.frequencyBinCount; y++) {
         const value = dataArray[y];
         const hue = value * 1.5;
@@ -110,40 +123,30 @@
         ctx.fillRect(drawX, usableHeight - y, 1, 1);
       }
 
-      const currentTime = audio.currentTime;
+      // Draw minor and major ticks
+      const realTime = audio.currentTime;
 
-      // Minor tick: every 1 min
-      const timePerPixel = 1 / (pxPerSecond * playbackRate);
-      const currentSeconds = currentTime;
-      const timeInMin = Math.floor(currentSeconds / 60);
-      const shouldDrawMinor = (Math.floor(currentSeconds) % 60 === 0);
+      const secondsPerPixel = 1 / playbackRate;
+      const currentSecond = realTime;
 
-      if (shouldDrawMinor) {
-        ctx.strokeStyle = "#555";
-        ctx.beginPath();
-        ctx.moveTo(drawX, usableHeight);
-        ctx.lineTo(drawX, usableHeight + 6);
-        ctx.stroke();
+      const isMajor = Math.floor(currentSecond) % 900 === 0; // every 15 min
+      const isMinor = Math.floor(currentSecond) % 60 === 0; // every 1 min
+
+      if (isMinor || isMajor) {
+        ctx.fillStyle = "white";
+        const tickHeight = isMajor ? 16 : 10;
+        ctx.fillRect(drawX, usableHeight + 1, 2, tickHeight);
       }
 
-      // Major tick: every 15 mins
-      if ((Math.floor(currentSeconds) % 900 === 0)) {
-        ctx.strokeStyle = "#aaa";
-        ctx.beginPath();
-        ctx.moveTo(drawX, usableHeight);
-        ctx.lineTo(drawX, usableHeight + 10);
-        ctx.stroke();
-      }
-
-      // Time label every 100 px
-      if (drawX % labelSpacingPx === 0) {
-        const label = formatTime(currentTime);
+      // Draw time label every 100px
+      if (drawX % labelInterval === 0) {
+        const label = formatTime(currentSecond);
         ctx.fillStyle = "black";
-        ctx.fillRect(drawX - 30, usableHeight, 60, labelHeight);
+        ctx.fillRect(drawX - 30, usableHeight, 60, labelHeight); // padding
         ctx.fillStyle = "white";
         ctx.font = "12px sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(label, drawX, usableHeight + 14);
+        ctx.fillText(label, drawX, usableHeight + 22);
       }
 
       drawX++;
@@ -152,6 +155,10 @@
       }
 
       animationId = requestAnimationFrame(drawSpectrogram);
+
+      if (audio.ended) {
+        navButtons.style.display = "block";
+      }
     }
 
     startBtn.addEventListener("click", async () => {
@@ -167,7 +174,8 @@
         URL.revokeObjectURL(audio.src);
       }
 
-      canvasContainer.innerHTML = "";
+      container.innerHTML = "";
+      navButtons.style.display = "none";
       createNewCanvas();
 
       const blobURL = URL.createObjectURL(file);
@@ -185,9 +193,9 @@
       source.connect(analyser);
       analyser.connect(audioCtx.destination);
 
+      isPaused = false;
       pauseBtn.disabled = false;
       pauseBtn.textContent = "Pause";
-      isPaused = false;
 
       audio.play();
       drawSpectrogram();
@@ -210,14 +218,14 @@
 
     saveBtn.addEventListener("click", () => {
       const mergedCanvas = document.createElement("canvas");
-      const totalHeight = canvasContainer.childNodes.length * canvasHeight;
+      const totalHeight = container.childNodes.length * canvasHeight;
 
       mergedCanvas.width = canvasWidth;
       mergedCanvas.height = totalHeight;
 
       const mergedCtx = mergedCanvas.getContext("2d");
 
-      canvasContainer.childNodes.forEach((canvas, i) => {
+      container.childNodes.forEach((canvas, i) => {
         mergedCtx.drawImage(canvas, 0, i * canvasHeight);
       });
 
@@ -226,6 +234,18 @@
       a.href = url;
       a.download = "spectrogram.png";
       a.click();
+    });
+
+    leftBtn.addEventListener("click", () => {
+      if (audio) {
+        audio.currentTime = Math.max(0, audio.currentTime - 15);
+      }
+    });
+
+    rightBtn.addEventListener("click", () => {
+      if (audio) {
+        audio.currentTime += 15;
+      }
     });
   </script>
 </body>
