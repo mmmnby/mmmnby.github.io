@@ -53,7 +53,7 @@
     </select>
     <button id="startBtn">Start</button>
     <button id="pauseBtn" disabled>Pause</button>
-    <button id="saveBtn">Download</button>
+    <button id="saveBtn">Download PNG</button>
   </div>
 
   <div class="canvas-container" id="canvasContainer"></div>
@@ -67,19 +67,16 @@
     const speedSelect = document.getElementById("speed");
 
     const canvasWidth = window.innerWidth;
-    const canvasHeight = 300;
-    const labelHeight = 20;
+    const canvasHeight = 320;
+    const labelHeight = 30;
     const usableHeight = canvasHeight - labelHeight;
 
     let playbackRate = 1;
     let audio, audioCtx, analyser, dataArray;
     let currentCanvas, ctx;
     let drawX = 0;
-    let lineCount = 0;
     let isPaused = false;
     let animationId;
-
-    const labelInterval = 100;
 
     function createNewCanvas() {
       const canvas = document.createElement("canvas");
@@ -88,12 +85,16 @@
       container.appendChild(canvas);
       currentCanvas = canvas;
       ctx = canvas.getContext("2d");
+
+      // Clear and draw background
+      ctx.fillStyle = "black";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       drawX = 0;
     }
 
     function formatTime(seconds) {
       const hrs = Math.floor(seconds / 3600);
-      const mins = Math.floor((seconds % 3600) % 3600 / 60);
+      const mins = Math.floor((seconds % 3600) / 60);
       const secs = Math.floor(seconds % 60);
       return `${hrs}h${mins}m${secs}s`;
     }
@@ -103,6 +104,7 @@
 
       analyser.getByteFrequencyData(dataArray);
 
+      // Draw frequency bars
       for (let y = 0; y < analyser.frequencyBinCount; y++) {
         const value = dataArray[y];
         const hue = value * 1.5;
@@ -110,17 +112,38 @@
         ctx.fillRect(drawX, usableHeight - y, 1, 1);
       }
 
-      if (drawX % labelInterval === 0) {
-        const label = formatTime(audio.currentTime);
-        ctx.fillStyle = "black";
-        ctx.fillRect(drawX - 25, usableHeight, 50, labelHeight);
-        ctx.fillStyle = "white";
-        ctx.font = "12px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(label, drawX, usableHeight + 14);
+      // Time and tick marks
+      const elapsed = audio.currentTime;
+      const pixelsPerSecond = 1 / playbackRate;
+
+      const everySecond = (1 * 60) * pixelsPerSecond;     // 1 minute tick
+      const everyMajor = (15 * 60) * pixelsPerSecond;     // 15 minute major tick
+
+      const isMinorTick = (drawX % Math.round(everySecond) === 0);
+      const isMajorTick = (drawX % Math.round(everyMajor) === 0);
+
+      if (isMinorTick || isMajorTick) {
+        const label = formatTime(elapsed);
+        ctx.beginPath();
+        ctx.moveTo(drawX, usableHeight);
+        ctx.lineTo(drawX, canvasHeight);
+        ctx.strokeStyle = isMajorTick ? "white" : "gray";
+        ctx.lineWidth = isMajorTick ? 2 : 1;
+        ctx.stroke();
+
+        if (isMajorTick) {
+          ctx.fillStyle = "white";
+          ctx.font = "12px sans-serif";
+          ctx.textAlign = "center";
+
+          // prevent clipping by padding the text area
+          const labelX = Math.min(Math.max(drawX, 20), canvasWidth - 20);
+          ctx.fillText(label, labelX, usableHeight + 20);
+        }
       }
 
       drawX++;
+
       if (drawX >= canvasWidth) {
         createNewCanvas();
       }
@@ -159,9 +182,9 @@
       source.connect(analyser);
       analyser.connect(audioCtx.destination);
 
+      isPaused = false;
       pauseBtn.disabled = false;
       pauseBtn.textContent = "Pause";
-      isPaused = false;
 
       audio.play();
       drawSpectrogram();
@@ -183,24 +206,23 @@
     });
 
     saveBtn.addEventListener("click", () => {
-      const mergedCanvas = document.createElement("canvas");
+      const fullCanvas = document.createElement("canvas");
       const totalHeight = container.childNodes.length * canvasHeight;
+      fullCanvas.width = canvasWidth;
+      fullCanvas.height = totalHeight;
 
-      mergedCanvas.width = canvasWidth;
-      mergedCanvas.height = totalHeight;
-
-      const mergedCtx = mergedCanvas.getContext("2d");
-
+      const fullCtx = fullCanvas.getContext("2d");
       container.childNodes.forEach((canvas, i) => {
-        mergedCtx.drawImage(canvas, 0, i * canvasHeight);
+        fullCtx.drawImage(canvas, 0, i * canvasHeight);
       });
 
-      const url = mergedCanvas.toDataURL("image/png");
+      const url = fullCanvas.toDataURL("image/png");
       const a = document.createElement("a");
       a.href = url;
       a.download = "spectrogram.png";
       a.click();
     });
   </script>
+
 </body>
 </html>
