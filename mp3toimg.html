@@ -2,201 +2,326 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Streamed MP3 Spectrogram</title>
+  <title>MP3 Spectrogram with WebCodecs</title>
   <style>
-    body { background:#111; color:white; text-align:center; font-family:sans-serif; padding:20px; }
-    canvas { background:black; border:1px solid #444; display:block; margin:20px auto; }
-    .controls { margin:20px; }
-    button, select, input { padding:6px 12px; font-size:16px; margin:5px; }
-    #status { margin-top:10px; font-style:italic; color:#ccc; }
-    #status.error { color:#f55; }
-    audio { display:none; }
+    body {
+      background: #111;
+      color: #fff;
+      font-family: sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    canvas {
+      background: black;
+      border: 1px solid #444;
+      display: block;
+      margin: 20px auto;
+    }
+    .controls {
+      margin-bottom: 20px;
+    }
+    select, button, input {
+      margin: 5px;
+      padding: 6px 12px;
+      font-size: 16px;
+    }
+    #status {
+      margin-top: 10px;
+      font-style: italic;
+      color: #ccc;
+    }
+    #status.error {
+      color: #f55;
+    }
   </style>
 </head>
 <body>
-  <h1>Streamed MP3 Spectrogram</h1>
+  <h1>MP3 Spectrogram Viewer</h1>
 
   <div class="controls">
     <input type="file" id="fileInput" accept=".mp3">
-    <select id="chunkSelect" disabled></select>
-    <button id="processBtn" disabled>Process Chunk</button>
+    <select id="segmentSelect" disabled></select>
+    <button id="renderBtn" disabled>Render Segment</button>
     <button id="saveBtn" disabled>Save PNG</button>
-    <div id="status">Select an MP3 file to start.</div>
+    <div id="status">Select an MP3 file.</div>
   </div>
 
   <canvas id="canvas" width="1000" height="256"></canvas>
-  <audio id="audio" controls></audio>
 
   <script>
-    const fileInput = document.getElementById('fileInput');
-    const chunkSelect = document.getElementById('chunkSelect');
-    const processBtn = document.getElementById('processBtn');
-    const saveBtn = document.getElementById('saveBtn');
-    const status = document.getElementById('status');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const audio = document.getElementById('audio');
+    const fileInput     = document.getElementById('fileInput');
+    const segmentSelect = document.getElementById('segmentSelect');
+    const renderBtn     = document.getElementById('renderBtn');
+    const saveBtn       = document.getElementById('saveBtn');
+    const statusDiv     = document.getElementById('status');
+    const canvas        = document.getElementById('canvas');
+    const ctx           = canvas.getContext('2d');
 
-    const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB
-    const segmentSec = 600; // 10 minutes
-    const FFT_SIZE = 512;
-    const HOP = FFT_SIZE / 2;
+    let pcmData = null,  // Float32Array of downsampled mono PCM
+        pcmRate = 8000,  // target sample rate
+        durationSec = 0;
 
-    let file, chunks = [];
+    const SEG_SEC = 600; // 10 minutes
+    const FFT_SIZE = 512,
+          HOP_SIZE = FFT_SIZE / 2;
 
-    function setStatus(msg, err=false) {
-      status.textContent = "Status: " + msg;
-      status.classList.toggle('error', err);
+    function setStatus(msg, err = false) {
+      statusDiv.textContent = 'Status: ' + msg;
+      statusDiv.classList.toggle('error', err);
       console.log(msg);
     }
 
-    fileInput.onchange = () => {
-      file = fileInput.files[0];
-      if (!file) return;
-      chunks = [];
-      const total = Math.ceil(file.size / CHUNK_SIZE);
-      for (let i = 0; i < total; i++) {
-        chunks.push(i);
+    async function tryWebCodecsDecode(buffer) {
+      if (!window.AudioDecoder || !AudioDecoder.isConfigSupported) {
+        throw new Error('WebCodecs not supported');
       }
-      chunkSelect.innerHTML = chunks.map(i => `<option value="${i}">Chunk ${i+1}/${chunks.length}</option>`).join('');
-      chunkSelect.disabled = false;
-      processBtn.disabled = false;
-      setStatus(`${chunks.length} chunks ready.`);
-    };
+      const {supported} = await AudioDecoder.isConfigSupported({
+        codec: 'mp3',
+      });
+      if (!supported) throw new Error('MP3 not supported by WebCodecs');
 
-    processBtn.onclick = async () => {
-      saveBtn.disabled = true;
-      const idx = parseInt(chunkSelect.value);
-      setStatus(`Appending chunk ${idx+1}...`);
-      try {
-        const mediaSrc = new MediaSource();
-        audio.src = URL.createObjectURL(mediaSrc);
-        mediaSrc.addEventListener('sourceopen', async () => {
-          const sb = mediaSrc.addSourceBuffer('audio/mpeg');
-          const start = idx * CHUNK_SIZE;
-          const end = Math.min(start + CHUNK_SIZE, file.size);
-          const slice = file.slice(start, end);
-          const data = await slice.arrayBuffer();
-          sb.appendBuffer(data);
-
-          sb.addEventListener('updateend', async () => {
-            mediaSrc.endOfStream();
-            audio.currentTime = 0;
-            audio.play();
-
-            setStatus('Decoding with OfflineAudioContext...');
-            setTimeout(async () => {
-              audio.pause();
-              const buffer = await decodeChunk(audio, segmentSec);
-              renderSpectrogram(buffer);
-              setStatus(`Rendered chunk ${idx+1}`);
-              saveBtn.disabled = false;
-              URL.revokeObjectURL(audio.src);
-            }, 500); // small pause to preload
-          });
+      return new Promise((resolve, reject) => {
+        const chunks = [];
+        let sampleRate = 0, channels = 0, totalFrames = 0;
+        const decoder = new AudioDecoder({
+          output: audioData => {
+            sampleRate = audioData.sampleRate;
+            channels   = audioData.numberOfChannels;
+            const frames = audioData.numberOfFrames;
+            const buf = new Float32Array(frames);
+            // mix down to mono:
+            if (channels === 1) {
+              audioData.copyTo(buf);
+            } else {
+              const tmp = new Float32Array(frames * channels);
+              audioData.copyTo(tmp, {planeIndex: 0});
+              for (let i=0; i<frames; i++) {
+                let sum = 0;
+                for (let c=0; c<channels; c++) sum += tmp[i*channels + c];
+                buf[i] = sum / channels;
+              }
+            }
+            chunks.push(buf);
+            totalFrames += frames;
+            audioData.close();
+          },
+          error: e => {
+            console.error('WebCodecs decode error', e);
+            reject(new Error('WebCodecs decoding failed'));
+          }
         });
-      } catch (e) {
-        setStatus('Error streaming chunk: ' + e.message, true);
-        console.error(e);
-      }
-    };
+        decoder.configure({codec:'mp3'});
 
-    async function decodeChunk(audioElem, durationSec) {
-      const sr = 8000;
-      const off = new OfflineAudioContext(1, sr * durationSec, sr);
-      const src = off.createMediaElementSource(audioElem);
-      src.connect(off.destination);
-      audioElem.currentTime = 0;
-      audioElem.playbackRate = off.sampleRate / audioElem.sampleRate;
-      audioElem.muted = true;
-      audioElem.play();
-      await off.startRendering();
-      audioElem.pause();
-      return off;
+        // feed full file as one chunk
+        try {
+          decoder.decode(new EncodedAudioChunk({
+            type: 'key',
+            timestamp: 0,
+            data: new Uint8Array(buffer)
+          }));
+          decoder.flush().then(() => {
+            decoder.close();
+            // concat
+            const full = new Float32Array(totalFrames);
+            let offset = 0;
+            for (const c of chunks) {
+              full.set(c, offset);
+              offset += c.length;
+            }
+            resolve({pcm: full, rate: sampleRate});
+          });
+        } catch (e) {
+          reject(e);
+        }
+      });
     }
 
-    function renderSpectrogram(buffer) {
-      const data = buffer.getChannelData(0);
-      ctx.fillStyle = 'black';
-      ctx.fillRect(0,0,canvas.width,canvas.height);
-      const fft = new FFT(FFT_SIZE);
-      const bins = FFT_SIZE/2;
-      for (let x=0; x<canvas.width-60; x++) {
-        const start = x * HOP;
-        if (start + FFT_SIZE > data.length) break;
-        const frame = new Float32Array(FFT_SIZE);
-        for (let i=0;i<FFT_SIZE;i++) frame[i]=data[start+i] * (0.5*(1-Math.cos(2*Math.PI*i/(FFT_SIZE-1))));
-        const out = fft.createComplexArray();
-        fft.realTransform(out,frame); fft.completeSpectrum(out);
-        for (let y=0;y<bins && y<canvas.height;y++) {
-          const re=out[2*y], im=out[2*y+1], mag=Math.sqrt(re*re+im*im);
-          const dB=Math.log10(mag+1)*40; const hue=Math.min(255,Math.floor(dB*5));
-          ctx.fillStyle=`hsl(${hue},100%,50%)`;
-          ctx.fillRect(x+60,canvas.height-1-y,1,1);
+    async function fallbackDecode(buffer) {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const audioBuf = await audioCtx.decodeAudioData(buffer);
+      // mix to mono
+      const ch0 = audioBuf.getChannelData(0);
+      let mono = ch0;
+      if (audioBuf.numberOfChannels > 1) {
+        const ch1 = audioBuf.getChannelData(1);
+        mono = new Float32Array(audioBuf.length);
+        for (let i=0; i<mono.length; i++) {
+          mono[i] = 0.5*(ch0[i] + ch1[i]);
         }
       }
-      drawLabels(buffer.sampleRate);
+      return {pcm: mono, rate: audioBuf.sampleRate};
     }
 
-    function drawLabels(sr) {
-      ctx.fillStyle='white'; ctx.font='12px sans-serif';
-      ctx.textAlign='right'; ctx.textBaseline='middle';
-      const ny = sr/2;
-      for (let i=0;i<=4;i++) {
-        const y=(i/4)*canvas.height;
-        ctx.fillText(((4-i)/4*ny).toFixed(0)+'Hz',58,y);
+    function downsample(inp, inRate, outRate=8000) {
+      const ratio = inRate / outRate;
+      const len   = Math.floor(inp.length / ratio);
+      const out   = new Float32Array(len);
+      for (let i=0; i<len; i++) {
+        out[i] = inp[Math.floor(i*ratio)];
+      }
+      return out;
+    }
+
+    function populateSegments() {
+      const totalMin = Math.floor(durationSec / 60);
+      segmentSelect.innerHTML = '';
+      for (let m=0; m<totalMin; m+=10) {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = `${m}–${m+10} min`;
+        segmentSelect.appendChild(opt);
+      }
+      segmentSelect.disabled = false;
+      renderBtn.disabled = false;
+    }
+
+    function renderSegment(startMin) {
+      const startSample = startMin*60*pcmRate;
+      const endSample   = Math.min(startSample + SEG_SEC*pcmRate, pcmData.length);
+      const seg         = pcmData.subarray(startSample, endSample);
+
+      // draw
+      const bins   = FFT_SIZE/2,
+            steps  = Math.floor((seg.length - FFT_SIZE)/HOP_SIZE),
+            pixels = Math.min(canvas.width-60, steps);
+      ctx.fillStyle = 'black';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+
+      const fft = new FFT(FFT_SIZE),
+            win = new Float32Array(FFT_SIZE);
+      for (let i=0;i<FFT_SIZE;i++) win[i]=0.5*(1-Math.cos(2*Math.PI*i/(FFT_SIZE-1)));
+      const out = fft.createComplexArray();
+
+      for (let x=0; x<pixels; x++) {
+        const offset = x*HOP_SIZE;
+        const frame  = new Float32Array(FFT_SIZE);
+        for (let i=0; i<FFT_SIZE; i++) frame[i] = (seg[offset+i]||0)*win[i];
+        fft.realTransform(out, frame);
+        fft.completeSpectrum(out);
+        for (let y=0; y<bins && y<canvas.height; y++) {
+          const re = out[2*y], im = out[2*y+1];
+          const mag = Math.sqrt(re*re + im*im),
+                db  = Math.log10(mag+1)*40;
+          const hue = Math.min(255, Math.floor(db*5));
+          ctx.fillStyle = `hsl(${hue},100%,50%)`;
+          ctx.fillRect(x+60, canvas.height-1-y,1,1);
+        }
+      }
+      // labels
+      ctx.fillStyle = 'white';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      const nyq = pcmRate/2;
+      for (let i=0; i<=4; i++) {
+        const y = i/4*canvas.height,
+              f = ((4-i)/4*nyq).toFixed(0);
+        ctx.fillText(f+' Hz', 55, y);
       }
       ctx.textAlign='center'; ctx.textBaseline='top';
       for (let i=0;i<=10;i++) {
-        const x=60+i*((canvas.width-60)/10);
-        ctx.fillText(i+'s',x,canvas.height-12);
+        const x = 60 + i/10*(canvas.width-60),
+              label = (startMin + i).toFixed(0) + 'm';
+        ctx.fillText(label, x, canvas.height-12);
       }
     }
 
-    saveBtn.onclick = () => {
+    fileInput.addEventListener('change', async () => {
+      const f = fileInput.files[0];
+      if (!f) return;
+      setStatus('Reading file…');
+      const arr = await f.arrayBuffer();
+      setStatus('Decoding via WebCodecs…');
+      let decoded;
+      try {
+        decoded = await tryWebCodecsDecode(arr);
+        setStatus('Decoded with WebCodecs');
+      } catch (e) {
+        console.warn('WebCodecs failed:', e);
+        setStatus('Falling back to decodeAudioData…');
+        try {
+          decoded = await fallbackDecode(arr);
+          setStatus('Decoded with decodeAudioData');
+        } catch (e2) {
+          setStatus('Both decoding methods failed', true);
+          return;
+        }
+      }
+      // downsample
+      pcmData      = downsample(decoded.pcm, decoded.rate, pcmRate);
+      durationSec  = pcmData.length / pcmRate;
+      populateSegments();
+      saveBtn.disabled = false;
+      setStatus('Ready – select a segment.');
+    });
+
+    renderBtn.addEventListener('click', () => {
+      const m = parseInt(segmentSelect.value,10);
+      if (pcmData) {
+        renderSegment(m);
+        setStatus(`Rendered ${m}–${m+10} min`);
+      }
+    });
+
+    saveBtn.addEventListener('click', () => {
       const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
       link.download = 'spectrogram.png';
-      link.href = canvas.toDataURL();
       link.click();
-    };
+    });
 
-    // FFT class as before (omitted due to brevity)...
-
+    // Inline FFT class
     class FFT {
       constructor(size) {
         this.size = size;
         this._csize = size<<1;
         this._table = new Float64Array(size*2);
-        for (let i=0;i<size;i++){
-          const a=Math.PI*i/size;
-          this._table[i*2]=Math.cos(a);this._table[i*2+1]=-Math.sin(a);}
-        this._rev=new Uint32Array(size);
-        const lg=Math.log2(size);
-        for (let i=0;i<size;i++) this._rev[i]=this._rev[i]=[...Array(lg)].reduce((y,_,$)=>(y<<1)|(i>>(lg-$-1)&1),0);
+        for (let i=0; i<size; i++) {
+          const a = Math.PI*i/size;
+          this._table[2*i]   = Math.cos(a);
+          this._table[2*i+1] = -Math.sin(a);
+        }
+        this._rev = new Uint32Array(size);
+        const lg = Math.log2(size);
+        for (let i=0; i<size; i++) this._rev[i]=this._revBits(i,lg);
       }
-      createComplexArray(){return new Float64Array(this._csize);}
+      _revBits(x,b){
+        let y=0;
+        for(let i=0;i<b;i++){
+          y=(y<<1)|(x&1);
+          x>>>=1;
+        }
+        return y;
+      }
+      createComplexArray(){ return new Float64Array(this._csize); }
       realTransform(out,data){
-        const sz=this.size;
-        for(let i=0;i<sz;i++){out[2*this._rev[i]]=data[i];out[2*this._rev[i]+1]=0;}
-        for(let step=1;step<sz;step<<=1){
-          const jump=step<<1,delta=sz/jump;
-          for(let i=0;i<sz;i+=jump){
+        const n=this.size, rev=this._rev, tbl=this._table;
+        for(let i=0;i<n;i++){
+          out[2*rev[i]]   = data[i];
+          out[2*rev[i]+1] = 0;
+        }
+        for(let step=1; step<n; step<<=1){
+          const jump=step<<1, delta=n/jump;
+          for(let i=0;i<n;i+=jump){
             for(let j=0;j<step;j++){
-              const idx=j*delta, tRe=this._table[2*idx], tIm=this._table[2*idx+1];
-              const i0=(i+j)<<1, i1=(i+j+step)<<1;
-              const re0=out[i0],im0=out[i0+1], re1=out[i1],im1=out[i1+1];
-              const tre=re1*tRe - im1*tIm, tim=re1*tIm+im1*tRe;
-              out[i1]=re0-tre;out[i1+1]=im0-tim;
-              out[i0]=re0+tre;out[i0+1]=im0+tim;
+              const idx=j*delta,
+                    tre=out[2*(i+j+step)]*tbl[2*idx]
+                        -out[2*(i+j+step)+1]*tbl[2*idx+1],
+                    tim=out[2*(i+j+step)]*tbl[2*idx+1]
+                        +out[2*(i+j+step)+1]*tbl[2*idx];
+              const i0=2*(i+j), i1=2*(i+j+step);
+              const re0=out[i0], im0=out[i0+1];
+              out[i1]   = re0-tre;   out[i1+1] = im0-tim;
+              out[i0]   = re0+tre;   out[i0+1] = im0+tim;
             }
           }
         }
       }
       completeSpectrum(out){
-        const sz=this.size;
-        for(let i=1;i<sz/2;i++){
-          out[(sz-i)*2]=out[i*2];
-          out[(sz-i)*2+1]=-out[i*2+1];
+        const n=this.size;
+        for(let i=1;i<n/2;i++){
+          out[2*(n-i)]   = out[2*i];
+          out[2*(n-i)+1] = -out[2*i+1];
         }
       }
     }
