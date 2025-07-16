@@ -169,7 +169,7 @@
     pauseBtn.addEventListener("click", () => {
       if (!audio) return;
       isPaused = !isPaused;
-
+ 
       if (isPaused) {
         audio.pause();
         cancelAnimationFrame(animationId);
