@@ -63,14 +63,13 @@
     <div id="statusInfo">Status: Waiting</div>
   </div>
 
-  <!-- 🔼 Moved complete controls here -->
+  <div class="canvas-container" id="canvasContainer"></div>
+
   <div class="complete-controls" id="completeControls" style="display:none;">
     <button id="back15">« 15s</button>
     <button id="playPauseEnd">Play/Pause</button>
     <button id="forward15">15s »</button>
   </div>
-
-  <div class="canvas-container" id="canvasContainer"></div>
 
   <script>
     const canvasWidth = window.innerWidth;
@@ -171,7 +170,7 @@
       drawX++;
       animationId = requestAnimationFrame(drawSpectrogram);
 
-      // Completion check
+      // Extra check for near-end
       if (!hasCompleted && (audio.ended || elapsed >= totalDuration)) {
         markComplete();
       }
