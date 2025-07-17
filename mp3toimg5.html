@@ -72,7 +72,7 @@
   let hasFinishedSpectrogram = false;
   let generatePhasePaused = false;
   let generatePhaseAnimationId = null;
-  let audioCtx = null; // <-- NEW: Track AudioContext for cleanup
+  let audioCtx = null;
 
   const spectrogramRows = [];
   const cursorOverlayRows = [];
@@ -167,15 +167,14 @@
   }
 
   function handleSpectrogramCompletion() {
-    if (hasFinishedSpectrogram) return; // <-- NEW: Idempotent guard
+    if (hasFinishedSpectrogram) return;
     cancelAnimationFrame(generatePhaseAnimationId);
     finalRowWidth = drawXPosition;
     hasFinishedSpectrogram = true;
-    playerControls.style.display = 'block';
 
-    // Disable Phase 1 controls
     startGenerateButton.disabled = true;
     pauseGenerateButton.disabled = true;
+    playerControls.style.display = 'block';
 
     setupPlaybackPhase();
   }
@@ -196,11 +195,19 @@
         if (!playbackPhaseAudio) return;
         const rect = canvas.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
+
+        const isLastRow = idx === rowStartTimeMarkers.length - 1;
+        const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
+
         const t0 = rowStartTimeMarkers[idx];
         const t1 = rowStartTimeMarkers[idx+1] || playbackPhaseAudio.duration;
-        const seekTime = t0 + clickX / SCREEN_WIDTH * (t1 - t0);
+        const seekTime = t0 + clickX / rowWidth * (t1 - t0);
+
         playbackPhaseAudio.currentTime = seekTime;
-        playbackPhaseAudio.play().catch(() => { playbackPhaseAudio.load(); playbackPhaseAudio.play(); });
+        playbackPhaseAudio.play().catch(() => {
+          playbackPhaseAudio.load();
+          playbackPhaseAudio.play();
+        });
         drawPlaybackCursor();
       });
     });
@@ -209,7 +216,10 @@
     playbackPhaseAudio.addEventListener('play', () => { playbackPhasePlaying = true; playPauseButton.textContent = 'Pause'; });
     playbackPhaseAudio.addEventListener('pause', () => { playbackPhasePlaying = false; playPauseButton.textContent = 'Play'; });
     playbackPhaseAudio.addEventListener('ended', () => { playbackPhasePlaying = false; playPauseButton.textContent = 'Play'; });
-    playbackPhaseAudio.addEventListener('timeupdate', () => { timeStatus.textContent = `Playback: ${formatTime(playbackPhaseAudio.currentTime)} / ${formatTime(playbackPhaseAudio.duration)}`; drawPlaybackCursor(); });
+    playbackPhaseAudio.addEventListener('timeupdate', () => {
+      timeStatus.textContent = `Playback: ${formatTime(playbackPhaseAudio.currentTime)} / ${formatTime(playbackPhaseAudio.duration)}`;
+      drawPlaybackCursor();
+    });
   }
 
   function drawPlaybackCursor() {
@@ -218,13 +228,25 @@
 
     cursorOverlayRows.forEach(({ canvas, ctx }, idx) => {
       ctx.clearRect(0, 0, SCREEN_WIDTH, ROW_HEIGHT);
+
       const t0 = rowStartTimeMarkers[idx];
       const t1 = rowStartTimeMarkers[idx+1] || playbackPhaseAudio.duration;
+
       if (t < t0 || t > t1) return;
-      const x = (t - t0) / (t1 - t0) * SCREEN_WIDTH;
-      ctx.lineWidth=5; ctx.strokeStyle='red'; ctx.beginPath(); ctx.moveTo(x+0.5,0); ctx.lineTo(x+0.5,ROW_HEIGHT); ctx.stroke();
-      ctx.lineWidth=3; ctx.strokeStyle='white'; ctx.beginPath(); ctx.moveTo(x+0.5,0); ctx.lineTo(x+0.5,ROW_HEIGHT); ctx.stroke();
-      ctx.lineWidth=1; ctx.strokeStyle='black'; ctx.beginPath(); ctx.moveTo(x+0.5,0); ctx.lineTo(x+0.5,ROW_HEIGHT); ctx.stroke();
+
+      const isLastRow = idx === rowStartTimeMarkers.length - 1;
+      const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
+
+      const x = (t - t0) / (t1 - t0) * rowWidth;
+
+      ctx.lineWidth = 5; ctx.strokeStyle = 'red';
+      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, ROW_HEIGHT); ctx.stroke();
+
+      ctx.lineWidth = 3; ctx.strokeStyle = 'white';
+      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, ROW_HEIGHT); ctx.stroke();
+
+      ctx.lineWidth = 1; ctx.strokeStyle = 'black';
+      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, ROW_HEIGHT); ctx.stroke();
     });
   }
 
@@ -233,14 +255,19 @@
     playbackPhaseAudio.currentTime = Math.max(0, playbackPhaseAudio.currentTime - 15);
     drawPlaybackCursor();
   });
+
   forward15Seconds.addEventListener('click', () => {
     if (!playbackPhaseAudio) return;
     playbackPhaseAudio.currentTime = Math.min(playbackPhaseAudio.duration, playbackPhaseAudio.currentTime + 15);
     drawPlaybackCursor();
   });
+
   playPauseButton.addEventListener('click', () => {
     if (!playbackPhaseAudio) return;
-    playbackPhasePlaying ? playbackPhaseAudio.pause() : playbackPhaseAudio.play().catch(() => { playbackPhaseAudio.load(); playbackPhaseAudio.play(); });
+    playbackPhasePlaying ? playbackPhaseAudio.pause() : playbackPhaseAudio.play().catch(() => {
+      playbackPhaseAudio.load();
+      playbackPhaseAudio.play();
+    });
   });
 
   startGenerateButton.addEventListener('click', () => {
@@ -251,7 +278,7 @@
       audioCtx.close();
       audioCtx = null;
     }
-    audioCtx = new AudioContext(); // <-- NEW: Create clean AudioContext
+    audioCtx = new AudioContext();
 
     generatePhaseAudio = new Audio(URL.createObjectURL(fileInput.files[0]));
     generatePhaseAudio.crossOrigin = 'anonymous';
