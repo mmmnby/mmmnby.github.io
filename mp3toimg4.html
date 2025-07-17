@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Spectrogram Player Phase 1 & 2 (Edge Fill)</title>
+<title>Spectrogram Player Phase 1 & 2 (Aligned Completion)</title>
 <style>
   body { background:#111; color:#fff; font-family:sans-serif; margin:0; text-align:center; }
   .controls { padding:10px; }
@@ -47,8 +47,6 @@
 </div>
 
 <script>
-// [Variables omitted for brevity—they remain unchanged from your version]
-
 const canvasWidth = window.innerWidth;
 const canvasHeight = 300;
 const tickHeight = 10;
@@ -116,6 +114,7 @@ function createNewRow() {
   overlayCanvases.push({ canvas: ov, ctx: ovctx });
 
   rowTimestamps.push(audio.currentTime);
+
   rowsContainer.appendChild(rowDiv);
   drawX = 0;
 }
@@ -136,6 +135,7 @@ function drawSpectrogram() {
   }
 
   const elapsed = Math.floor(audio.currentTime);
+
   if (elapsed % 60 === 0) {
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = (elapsed % 900 === 0 ? 2 : 1);
@@ -165,27 +165,29 @@ function drawSpectrogram() {
   if (audio.ended || audio.currentTime >= audio.duration) {
     spectrogramComplete = true;
 
-    // Fill remainder of last row to canvas edge with checkerboard
     const last = spectroCanvases[spectroCanvases.length - 1];
-    if (drawX < canvasWidth) {
-      const ctx = last.ctx;
-      const squareSize = 6;
-      for (let x = drawX; x < canvasWidth; x += squareSize) {
-        for (let y = 0; y < usableHeight; y += squareSize) {
-          const isLight = ((x / squareSize) ^ (y / squareSize)) % 2 === 0;
-          ctx.fillStyle = isLight ? '#444' : '#222';
-          ctx.fillRect(x, y, squareSize, squareSize);
-        }
+    const ctx = last.ctx;
+
+    // Fill remaining space in last row with checkerboard and increment drawX until full width
+    const squareSize = 6;
+
+    while (drawX < canvasWidth) {
+      for (let y = 0; y < usableHeight; y += squareSize) {
+        const isLight = ((drawX / squareSize) ^ (y / squareSize)) % 2 === 0;
+        ctx.fillStyle = isLight ? '#444' : '#222';
+        ctx.fillRect(drawX, y, squareSize, squareSize);
       }
+      drawX += squareSize;
     }
+
+    // Ensure final full row ends up triggering a row split (alignment trick)
+    if (drawX >= canvasWidth) createNewRow();
 
     navButtons.style.display = 'block';
     audio.currentTime = 0;
     setupPhase2();
   }
 }
-
-// [Phase 2 setup, cursor, and controls remain unchanged — see your original full code above]
 
 function setupPhase2() {
   if (!spectrogramComplete) return;
@@ -344,25 +346,13 @@ startBtn.addEventListener('click', () => {
   isPaused = false;
   pauseBtn.disabled = false;
 
-  audio.addEventListener('ended', () => {
-    spectrogramComplete = true;
-    navButtons.style.display = 'block';
-    audio.currentTime = 0;
-    setupPhase2();
-  });
-
   drawSpectrogram();
 });
 
 pauseBtn.addEventListener('click', () => {
   if (!audio) return;
-  if (isPaused) {
-    audio.play();
-    isPaused = false;
-  } else {
-    audio.pause();
-    isPaused = true;
-  }
+  isPaused = !isPaused;
+  isPaused ? audio.pause() : audio.play();
 });
 
 saveBtn.addEventListener('click', () => {
