@@ -1,38 +1,39 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Spectrogram Player with End Fill & Precise Overlay</title>
+<meta charset="UTF-8" />
+<title>Spectrogram Phase 1 Completion Fill + Phase 2</title>
 <style>
-  body { background:#111; color:white; font-family:sans-serif; margin:0; text-align:center; }
-  .controls { padding:10px; }
-  .controls>* { margin:4px; font-size:16px; }
-  #timeDisplay { margin-top:6px; font-size:14px; font-style:italic; }
-  .canvas-container { position:relative; display:inline-block; margin-bottom:20px; }
-  canvas.spectro { background:#000; display:block; }
-  canvas.overlay { position:absolute; top:0; left:0; pointer-events:auto; }
-  #navButtons{ margin:10px; display:none; }
-  #navButtons button{ margin:0 6px; font-size:16px; padding:6px 12px; }
+  body { background:#111; color:#fff; font-family:sans-serif; margin:0; text-align:center }
+  .controls { padding:10px }
+  .controls>* { margin:4px; font-size:16px }
+  #timeDisplay { margin-top:6px; font-size:14px; font-style:italic }
+  .canvas-container { position:relative; display:inline-block; margin-bottom:20px }
+  canvas.spectro { background:#000; display:block }
+  canvas.overlay {
+    position:absolute; left:0; top:0; pointer-events:auto
+  }
+  #navButtons { margin:10px; display:none }
+  #navButtons button { margin:0 6px; font-size:16px; padding:6px 12px }
 </style>
 </head>
 <body>
 
-<h1>Spectrogram Player (End‑Fill + Precise Phase 2)</h1>
+<h1>Spectrogram with End Fill + Phase 2</h1>
 
 <div class="controls">
   <input type="file" id="audioFile" accept=".mp3">
   <label>Speed:
     <select id="speed"><option>1</option><option>2</option><option>4</option><option>30</option><option>60</option><option>120</option></select>×
   </label>
-  <button id="startBtn">Play (Phase 1)</button>
+  <button id="startBtn">Play (Phase 1)</button>
   <button id="pauseBtn" disabled>Pause</button>
   <button id="saveBtn">Download PNG</button>
-  <div id="timeDisplay">No file loaded.</div>
+  <div id="timeDisplay">No file</div>
   <div id="durationDisplay"></div>
 </div>
 
 <div id="rowsContainer"></div>
-
 <div id="navButtons">
   <button id="back15">◀ 15s</button>
   <button id="masterToggle">Play/Pause</button>
@@ -40,247 +41,175 @@
 </div>
 
 <script>
-const canvasWidth = window.innerWidth;
-const canvasHeight = 300;
-const tickHeight = 10;
-const labelHeight = 20;
-const usableHeight = canvasHeight - tickHeight - labelHeight;
-const labelInterval = 100, labelPadding = 6;
+const W = window.innerWidth, H = 300, tickH=10, labH=20, usableH=H-tickH-labH;
+const labelInterval=100,labelPad=6;
 
-const fileInput = document.getElementById('audioFile');
-const speedSelect = document.getElementById('speed');
-const startBtn = document.getElementById('startBtn');
-const pauseBtn = document.getElementById('pauseBtn');
-const saveBtn = document.getElementById('saveBtn');
-const timeDisplay = document.getElementById('timeDisplay');
-const durationDisplay = document.getElementById('durationDisplay');
-const rowsContainer = document.getElementById('rowsContainer');
-const navButtons = document.getElementById('navButtons');
-const back15 = document.getElementById('back15');
-const masterToggle = document.getElementById('masterToggle');
-const forward15 = document.getElementById('forward15');
+let masterAudio, audioCtx, analyser, dataArray;
+let drawX=0, spectComplete=false, isPaused=false, anim;
+let spectroRows=[], overlayRows=[], rowTimestamps=[];
+let phase2, phase2Playing=false;
 
-let audio, audioCtx, analyser, dataArray;
-let drawX = 0, spectrogramComplete = false, isPaused = false, animationId;
-let spectroCanvases = [], overlayCanvases = [], rowTimestamps = [];
-
-let phase2Audio = null, phase2Playing = false;
-
-function formatTime(s) {
-  const h = Math.floor(s / 3600),
-        m = Math.floor((s % 3600) / 60),
-        sec = Math.floor(s % 60);
-  return `${h}h${m}m${sec}s`;
+function fmt(t){const h=Math.floor(t/3600),m=Math.floor((t%3600)/60),s=Math.floor(t%60); return `${h}h${m}m${s}s`;}
+function updateTime(){ 
+  if(masterAudio) {
+    const c=masterAudio.currentTime, d=masterAudio.duration||0;
+    document.getElementById('timeDisplay').textContent = `Phase 1: ${fmt(c)} / ${fmt(d)}`;
+  }
 }
 
-function updatePhase1Display() {
-  if (audio) {
-    const cur = audio.currentTime || 0;
-    const dur = audio.duration || 0;
-    timeDisplay.textContent = `Processing Time: ${formatTime(cur)} / ${formatTime(dur)}`;
-  } else timeDisplay.textContent = 'No file loaded.';
+function newRow(){
+  const d = document.createElement('div'); d.className='canvas-container';
+  const c=document.createElement('canvas'); c.width=W; c.height=H; c.className='spectro';
+  const ctx=c.getContext('2d'); ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+  d.appendChild(c); spectroRows.push({c,ctx});
+  const o=document.createElement('canvas'); o.width=W; o.height=H; o.className='overlay';
+  const oct=o.getContext('2d'); d.appendChild(o); overlayRows.push({c:o,ctx:oct});
+  rowTimestamps.push(masterAudio.currentTime);
+  document.getElementById('rowsContainer').appendChild(d);
+  drawX=0;
 }
 
-function createNewRow() {
-  const div = document.createElement('div');
-  div.className = 'canvas-container';
-
-  const sc = document.createElement('canvas');
-  sc.width = canvasWidth; sc.height = canvasHeight;
-  sc.className = 'spectro';
-  const sctx = sc.getContext('2d');
-  sctx.fillStyle = '#000';
-  sctx.fillRect(0,0,canvasWidth,canvasHeight);
-  div.appendChild(sc);
-  spectroCanvases.push({canvas: sc, ctx: sctx});
-
-  const ov = document.createElement('canvas');
-  ov.width = canvasWidth; ov.height = canvasHeight;
-  ov.className = 'overlay';
-  const ovctx = ov.getContext('2d');
-  div.appendChild(ov);
-  overlayCanvases.push({canvas: ov, ctx: ovctx});
-
-  rowTimestamps.push(audio.currentTime || 0);
-  rowsContainer.appendChild(div);
-
-  drawX = 0;
-}
-
-function drawSpectrogram() {
-  if (!audio || audio.paused || audio.ended || isPaused) return;
-
+function drawSpectrogram(){
+  if(!masterAudio || masterAudio.paused||isPaused) return;
   analyser.getByteFrequencyData(dataArray);
-  if (drawX >= canvasWidth) createNewRow();
-  const {ctx} = spectroCanvases[spectroCanvases.length - 1];
-
-  for (let y=0;y<analyser.frequencyBinCount;y++){
-    const v = dataArray[y];
-    ctx.fillStyle = `hsl(${v*1.5},100%,50%)`;
-    ctx.fillRect(drawX, usableHeight - y, 1, 1);
+  if(drawX>=W) newRow();
+  const ctx=spectroRows[spectroRows.length-1].ctx;
+  for(let y=0;y<analyser.frequencyBinCount;y++){
+    const v=dataArray[y],col=`hsl(${v*1.5},100%,50%)`;
+    ctx.fillStyle=col; ctx.fillRect(drawX,usableH-y,1,1);
   }
-
-  const elapsed = Math.floor(audio.currentTime);
-  if (elapsed % 60 === 0) {
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = (elapsed % 900 === 0?2:1);
-    ctx.beginPath();
-    ctx.moveTo(drawX+0.5,usableHeight);
-    ctx.lineTo(drawX+0.5,usableHeight+tickHeight);
-    ctx.stroke();
+  const e=Math.floor(masterAudio.currentTime);
+  if(e%60===0){
+    ctx.strokeStyle='#fff'; ctx.lineWidth=e%900===0?2:1;
+    ctx.beginPath(); ctx.moveTo(drawX+0.5,usableH); ctx.lineTo(drawX+0.5,usableH+tickH); ctx.stroke();
   }
-  if (drawX % labelInterval === 0) {
-    const lbl = formatTime(audio.currentTime);
-    const tw = ctx.measureText(lbl).width;
+  if(drawX%labelInterval===0){
+    const lab=fmt(masterAudio.currentTime),tw=ctx.measureText(lab).width;
     ctx.fillStyle='#000';
-    ctx.fillRect(drawX - tw/2 - labelPadding,usableHeight+tickHeight,tw+2*labelPadding,labelHeight);
-    ctx.fillStyle='#fff';
-    ctx.textAlign='center'; ctx.textBaseline='top';
-    ctx.font='12px sans-serif';
-    ctx.fillText(lbl,drawX,usableHeight+tickHeight+2);
+    ctx.fillRect(drawX-tw/2-labelPad,usableH+tickH,tw+2*labelPad,labH);
+    ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.font='12px sans-serif'; ctx.fillText(lab,drawX,usableH+tickH+2);
   }
-
-  drawX++;
-  updatePhase1Display();
-  animationId = requestAnimationFrame(drawSpectrogram);
-
-  if (audio.ended || audio.currentTime >= audio.duration) {
-    spectrogramComplete = true;
-    fillToScreenEdgeThenPhase2();
+  drawX++; updateTime();
+  anim=requestAnimationFrame(drawSpectrogram);
+  if(masterAudio.currentTime>=masterAudio.duration){
+    spectComplete=true;
+    fillToEnd();
   }
 }
 
-function fillToScreenEdgeThenPhase2() {
-  const last = spectroCanvases[spectroCanvases.length-1].ctx;
-  const x0 = drawX;
-  if (x0 < canvasWidth) {
-    const startTime = audio.duration;
-    const addedSec = 5; 
-    const totalToDraw = canvasWidth - x0;
-    const msPerPixel = (addedSec*1000)/totalToDraw;
-    let px=0, t0=0;
-    function fillStep(){
-      if (px >= totalToDraw) {
-        drawX = canvasWidth;
-        rowTimestamps.push(audio.duration + addedSec);
-        startPhase2();
-        return;
-      }
-      const t = startTime + (px / totalToDraw)*addedSec;
-      const yy = usableHeight;
-      last.fillStyle = (px % 2 ? '#444' : '#222');
-      last.fillRect(x0+px, 0, 1, usableHeight);
-      if ((x0+px)%labelInterval===0) {
-        const lbl = formatTime(t);
-        const tw = last.measureText ? last.measureText(lbl).width : 30;
-        last.fillStyle='#000';
-        last.fillRect(x0+px - tw/2 - labelPadding, usableHeight+tickHeight, tw+2*labelPadding, labelHeight);
-        last.fillStyle='#fff';
-        last.textAlign='center'; last.textBaseline='top'; last.font='12px sans-serif';
-        last.fillText(lbl, x0+px, usableHeight+tickHeight+2);
-      }
-      px++;
-      setTimeout(fillStep, msPerPixel);
-    }
-    fillStep();
-  } else {
-    rowTimestamps.push(audio.duration);
+function fillToEnd(){
+  cancelAnimationFrame(anim);
+  const d=masterAudio.duration;
+  const lastCtx = spectroRows[spectroRows.length-1].ctx;
+  const ws=W-drawX;
+  const incrementTime = d / (masterAudio.duration*masterAudio.playbackRate) / 60; // approximate filler
+  let extraCols = W - drawX;
+  let t=masterAudio.duration;
+  const fillFn = ()=>{
+    if(extraCols<=0){ startPhase2(); return; }
+    // fill discretely:
+    lastCtx.fillStyle='#333';
+    lastCtx.fillRect(drawX, usableH - analyser.frequencyBinCount, extraCols, analyser.frequencyBinCount);
+    drawX=W;
+    rowTimestamps[rowTimestamps.length-1] = t;
     startPhase2();
-  }
+  };
+  fillFn();
 }
 
-function startPhase2() {
-  navButtons.style.display='block';
-  setupPhase2Audio();
-}
-
-function setupPhase2Audio(){
-  phase2Audio = new Audio(URL.createObjectURL(fileInput.files[0]));
-  phase2Audio.preload='auto'; phase2Audio.playbackRate=1; phase2Playing=false;
-  overlayCanvases.forEach(({canvas},idx)=>{
-    canvas.style.pointerEvents='auto';
-    canvas.onclick=e=>{
-      const t0=rowTimestamps[idx], t1=rowTimestamps[idx+1]||phase2Audio.duration;
-      const pos=(e.clientX − canvas.getBoundingClientRect().left)/canvasWidth;
-      phase2Audio.currentTime = t0 + pos*(t1-t0);
-      phase2Audio.play();
+function setupPhase2(){
+  document.getElementById('navButtons').style.display='block';
+  phase2=new Audio(URL.createObjectURL(fileInput.files[0]));
+  phase2.preload='auto'; phase2.crossOrigin='anonymous'; phase2.playbackRate=1;
+  
+  overlayRows.forEach((o,i)=>{
+    o.c.style.pointerEvents='auto';
+    o.c.addEventListener('click',e=>{
+      const rect=o.c.getBoundingClientRect(),x=e.clientX-rect.left;
+      const t0=rowTimestamps[i], t1=rowTimestamps[i+1]||phase2.duration;
+      phase2.currentTime=(t0 + x/W*(t1 - t0));
+      if(!phase2Playing) phase2.play();
       drawPhase2Cursor();
-    };
-  });
-  ['ended','play','pause','timeupdate'].forEach(evt=>{
-    phase2Audio.addEventListener(evt,()=>{ 
-      if(evt==='timeupdate') drawPhase2Cursor();
-      phase2Playing = !phase2Audio.paused;
-      masterToggle.textContent = phase2Playing?'Pause':'Play';
-      timeDisplay.textContent = `Playback Time: ${formatTime(phase2Audio.currentTime)} / ${formatTime(phase2Audio.duration)}`;
     });
   });
-  phase2Audio.play().catch(_=>{
-    phase2Audio.load(); phase2Audio.play().catch(console.error);
-  });
+  
+  phase2.addEventListener('ended',()=>{phase2Playing=false; masterToggle.textContent='Play'; clearInterval(phase2.timer)});
+  phase2.addEventListener('play',()=>{phase2Playing=true; masterToggle.textContent='Pause'; setupCursor();}
+  );
+  phase2.addEventListener('pause',()=>{phase2Playing=false; masterToggle.textContent='Play'; clearInterval(phase2.timer)});
+}
+
+function startPhase2(){
+  setupPhase2();
+  phase2.play();
 }
 
 function drawPhase2Cursor(){
-  overlayCanvases.forEach(({ctx},i)=>{
-    ctx.clearRect(0,0,canvasWidth,canvasHeight);
-    const t=phase2Audio.currentTime;
-    const t0=rowTimestamps[i], t1=rowTimestamps[i+1]||phase2Audio.duration;
-    if(t<t0||t>t1)return;
-    const x=((t-t0)/(t1-t0))*canvasWidth;
-    ['red','white','black'].forEach((col,idx)=>{
-      ctx.lineWidth = idx===0?5: idx===1?3:1;
-      ctx.strokeStyle=col;
-      ctx.beginPath(); ctx.moveTo(x+.5,0); ctx.lineTo(x+.5,canvasHeight); ctx.stroke();
+  if(!phase2) return;
+  overlayRows.forEach((o,i)=>{
+    o.ctx.clearRect(0,0,W,H);
+    const t=phase2.currentTime, t0=rowTimestamps[i],t1=rowTimestamps[i+1]||phase2.duration;
+    if(t<t0||t>t1) return;
+    const x=(t - t0)/(t1 - t0)*W;
+    ['#red','#fff','#black'].forEach((col,idx)=>{
+      o.ctx.lineWidth = idx===0?5:idx===1?3:1;
+      o.ctx.strokeStyle = idx===0?'red':idx===1?'white':'black';
+      o.ctx.beginPath(); o.ctx.moveTo(x+0.5,0); o.ctx.lineTo(x+0.5,H); o.ctx.stroke();
     });
   });
 }
 
-back15.onclick = ()=> phase2Audio && (phase2Audio.currentTime=Math.max(0,phase2Audio.currentTime-15), drawPhase2Cursor());
-forward15.onclick = ()=> phase2Audio && (phase2Audio.currentTime=Math.min(phase2Audio.duration, phase2Audio.currentTime+15), drawPhase2Cursor());
-masterToggle.onclick = ()=>{
-  if(!phase2Audio)return;
-  phase2Playing? phase2Audio.pause(): phase2Audio.play().catch(_=>{ phase2Audio.load(); phase2Audio.play() });
-};
+function setupCursor(){
+  clearInterval(phase2.timer);
+  phase2.timer=setInterval(drawPhase2Cursor,100);
+  drawPhase2Cursor();
+}
 
-startBtn.onclick = ()=>{
-  if(!fileInput.files[0])return alert('Please select a file');
-  if(audio){ audio.pause(); audio.src=''; audio=null; }
-  audio = new Audio(URL.createObjectURL(fileInput.files[0]));
-  audio.preload='auto'; audio.crossOrigin='anonymous'; audio.playbackRate=Number(speedSelect.value);
+function updatePhase2Time(){
+  document.getElementById('timeDisplay').textContent = `Phase 2: ${fmt(phase2.currentTime)} / ${fmt(phase2.duration)}`;
+}
+
+document.getElementById('startBtn').onclick = ()=>{
+  const f=fileInput.files[0];
+  if(!f){alert('Select file');return;}
+  masterAudio= new Audio(URL.createObjectURL(f));
+  masterAudio.preload='auto';
   audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-  const src=audioCtx.createMediaElementSource(audio);
-  analyser=audioCtx.createAnalyser(); analyser.fftSize=512;
+  analyser=audioCtx.createAnalyser();
+  audioCtx.createMediaElementSource(masterAudio).connect(analyser);
   analyser.connect(audioCtx.destination);
-  src.connect(analyser);
+  analyser.fftSize=512;
   dataArray=new Uint8Array(analyser.frequencyBinCount);
-
-  spectrogramComplete=false;
+  spectComplete=false;
   drawX=0;
-  rowsContainer.innerHTML='';
-  spectroCanvases=[]; overlayCanvases=[]; rowTimestamps=[];
-
-  createNewRow();
-  audio.play();
-  isPaused=false;
-  pauseBtn.disabled=false;
-
-  audio.onended = ()=>{ spectrogramComplete=true; fillToScreenEdgeThenPhase2(); };
-
-  drawSpectrogram();
+  spectroRows=[]; overlayRows=[]; rowTimestamps=[];
+  document.getElementById('rowsContainer').innerHTML='';
+  document.getElementById('navButtons').style.display='none';
+  newRow(); masterAudio.play(); anim=requestAnimationFrame(drawSpectrogram);
+  document.getElementById('pauseBtn').disabled=false;
 };
 
-pauseBtn.onclick = ()=>{
-  if(!audio)return;
-  isPaused ? audio.play() : audio.pause();
-  isPaused = !isPaused;
+document.getElementById('pauseBtn').onclick = ()=>{
+  if(!masterAudio) return;
+  if(isPaused){masterAudio.play();anim=requestAnimationFrame(drawSpectrogram);isPaused=false}
+  else{masterAudio.pause();cancelAnimationFrame(anim);isPaused=true;}
 };
 
-saveBtn.onclick = ()=>alert('Download not implemented');
+document.getElementById('back15').onclick = ()=>{ phase2.currentTime = Math.max(0,phase2.currentTime-15); drawPhase2Cursor();}
+document.getElementById('forward15').onclick = ()=>{ phase2.currentTime = Math.min(phase2.duration,phase2.currentTime+15); drawPhase2Cursor();}
+document.getElementById('masterToggle').onclick = ()=>{ phase2Playing ? phase2.pause(): phase2.play(); }
+
+document.getElementById('saveBtn').onclick = ()=>{
+  // flatten PNG logic ...
+};
+
 fileInput.onchange = ()=>{
-  if(!fileInput.files[0]){ timeDisplay.textContent='No file'; durationDisplay.textContent=''; return; }
-  const tmp=document.createElement('audio');
-  tmp.src=URL.createObjectURL(fileInput.files[0]);
-  tmp.onloadedmetadata = ()=> durationDisplay.textContent = 'Total Duration: '+formatTime(tmp.duration);
+  const f = fileInput.files[0];
+  if(!f) return;
+  const tmp = document.createElement('audio');
+  tmp.src = URL.createObjectURL(f);
+  tmp.onloadedmetadata = ()=>document.getElementById('durationDisplay').textContent = fmt(tmp.duration);
 };
 </script>
 </body>
