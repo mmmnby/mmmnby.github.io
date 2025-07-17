@@ -129,7 +129,7 @@
 
   // ---- Spectrogram Drawing Loop ----
   function drawSpectrogramFrame() {
-    if (!generatePhaseAudio || generatePhaseAudio.paused || generatePhasePaused) {
+    if (generatePhaseAudio.paused || generatePhasePaused) {
       return;
     }
 
