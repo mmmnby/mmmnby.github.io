@@ -1,8 +1,9 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Spectrogram Player (Extrapolated Final Row)</title>
+<title>Spectrogram Player Phase 1 & 2 (Edge Fill)</title>
 <style>
   body { background:#111; color:#fff; font-family:sans-serif; margin:0; text-align:center; }
   .controls { padding:10px; }
@@ -21,7 +22,7 @@
 </head>
 <body>
 
-<h1>Spectrogram Player</h1>
+<h1>Spectrogram Player (Phase 1 & 2)</h1>
 
 <div class="controls">
   <input type="file" id="audioFile" accept=".mp3" />
@@ -73,12 +74,11 @@ let spectroCanvases = [], overlayCanvases = [], rowTimestamps = [];
 
 let phase2Audio = null;
 let phase2Playing = false;
-let extrapolatedTimePerPixel = 0;
 
 function formatTime(s) {
   const h = Math.floor(s / 3600),
-        m = Math.floor((s % 3600) / 60),
-        sec = Math.floor(s % 60);
+    m = Math.floor((s % 3600) / 60),
+    sec = Math.floor(s % 60);
   return `${h}h${m}m${sec}s`;
 }
 
@@ -162,71 +162,52 @@ function drawSpectrogram() {
   animationId = requestAnimationFrame(drawSpectrogram);
 
   if (audio.ended || audio.currentTime >= audio.duration) {
-    cancelAnimationFrame(animationId);
-    const finalTime = audio.currentTime;
-    extrapolatedTimePerPixel = (finalTime - rowTimestamps[rowTimestamps.length - 1]) / drawX;
-    extrapolateFinalRow(finalTime);
+    spectrogramComplete = true;
+
+    // FIXED: Only fill remaining space with checkerboard
+    const last = spectroCanvases[spectroCanvases.length - 1];
+    if (drawX < canvasWidth) {
+      const ctx = last.ctx;
+      const squareSize = 6;
+      // Only fill from current drawX position to end
+      for (let x = drawX; x < canvasWidth; x += squareSize) {
+        for (let y = 0; y < usableHeight; y += squareSize) {
+          const isLight = ((x / squareSize) ^ (y / squareSize)) % 2 === 0;
+          ctx.fillStyle = isLight ? '#444' : '#222';
+          ctx.fillRect(x, y, squareSize, squareSize);
+        }
+      }
+    }
+
+    navButtons.style.display = 'block';
+    audio.currentTime = 0;
+    setupPhase2();
   }
-}
-
-function extrapolateFinalRow(lastKnownTime) {
-  const { ctx } = spectroCanvases[spectroCanvases.length - 1];
-  const interval = 1;
-
-  function fill() {
-    if (drawX >= canvasWidth) {
-      rowTimestamps.push(lastKnownTime + extrapolatedTimePerPixel * (canvasWidth - 1));
-      spectrogramComplete = true;
-      navButtons.style.display = 'block';
-      setupPhase2();
-      return;
-    }
-
-    for (let y = 0; y < analyser.frequencyBinCount; y++) {
-      const v = Math.random() * 255;
-      ctx.fillStyle = `hsl(${v * 1.5},100%,30%)`;
-      ctx.fillRect(drawX, usableHeight - y, 1, 1);
-    }
-
-    if (drawX % labelInterval === 0) {
-      const extrapolatedTime = lastKnownTime + extrapolatedTimePerPixel * drawX;
-      const label = formatTime(extrapolatedTime);
-      const tw = ctx.measureText(label).width;
-      ctx.fillStyle = '#000';
-      ctx.fillRect(drawX - tw / 2 - labelPadding, usableHeight + tickHeight, tw + 2 * labelPadding, labelHeight);
-      ctx.fillStyle = '#fff';
-      ctx.textAlign = 'center';
-      ctx.font = '12px sans-serif';
-      ctx.fillText(label, drawX, usableHeight + tickHeight + 2);
-    }
-
-    drawX++;
-    requestAnimationFrame(fill);
-  }
-
-  fill();
 }
 
 function setupPhase2() {
   if (!spectrogramComplete) return;
-
   if (phase2Audio) {
     phase2Audio.pause();
     phase2Audio = null;
   }
-
   phase2Audio = new Audio();
   phase2Audio.src = URL.createObjectURL(fileInput.files[0]);
   phase2Audio.preload = 'auto';
   phase2Audio.playbackRate = 1.0;
+  phase2Audio.crossOrigin = 'anonymous';
+
+  phase2Playing = false;
 
   overlayCanvases.forEach(({ canvas }, idx) => {
+    canvas.style.pointerEvents = 'auto';
     canvas.addEventListener('click', e => {
       const rect = canvas.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
       const t0 = rowTimestamps[idx];
-      const t1 = rowTimestamps[idx + 1] || (t0 + extrapolatedTimePerPixel * canvasWidth);
+      const t1 = rowTimestamps[idx + 1] || phase2Audio.duration || 0;
       const seekTime = t0 + (clickX / canvasWidth) * (t1 - t0);
+      if (!phase2Audio) return;
       phase2Audio.currentTime = seekTime;
       if (!phase2Playing) phase2Audio.play();
       drawPhase2Cursor();
@@ -234,6 +215,11 @@ function setupPhase2() {
   });
 
   navButtons.style.display = 'block';
+
+  phase2Audio.addEventListener('ended', () => {
+    phase2Playing = false;
+    masterToggle.textContent = 'Play';
+  });
 
   phase2Audio.addEventListener('play', () => {
     phase2Playing = true;
@@ -245,48 +231,89 @@ function setupPhase2() {
     masterToggle.textContent = 'Play';
   });
 
-  phase2Audio.addEventListener('ended', () => {
-    phase2Playing = false;
-    masterToggle.textContent = 'Play';
-  });
-
   phase2Audio.addEventListener('timeupdate', () => {
     drawPhase2Cursor();
-    timeDisplay.textContent = `Playback Time: ${formatTime(phase2Audio.currentTime)} / Total: ${formatTime(phase2Audio.duration || 0)}`;
+    displayPhase2Time();
   });
 }
 
 function drawPhase2Cursor() {
+  if (!phase2Audio) return;
+
   const t = phase2Audio.currentTime;
 
   overlayCanvases.forEach(({ canvas, ctx }, idx) => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
     const t0 = rowTimestamps[idx];
-    const t1 = rowTimestamps[idx + 1] || (t0 + extrapolatedTimePerPixel * canvasWidth);
+    const t1 = rowTimestamps[idx + 1] || phase2Audio.duration || 0;
 
     if (t < t0 || t > t1) return;
 
     const x = ((t - t0) / (t1 - t0)) * canvas.width;
-    ctx.lineWidth = 5; ctx.strokeStyle = 'red';
-    ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, canvas.height); ctx.stroke();
-    ctx.lineWidth = 3; ctx.strokeStyle = 'white';
-    ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, canvas.height); ctx.stroke();
-    ctx.lineWidth = 1; ctx.strokeStyle = 'black';
-    ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, canvas.height); ctx.stroke();
+
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = 'red';
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, 0);
+    ctx.lineTo(x + 0.5, canvas.height);
+    ctx.stroke();
+
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'white';
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, 0);
+    ctx.lineTo(x + 0.5, canvas.height);
+    ctx.stroke();
+
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'black';
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, 0);
+    ctx.lineTo(x + 0.5, canvas.height);
+    ctx.stroke();
   });
 }
 
-back15.onclick = () => { phase2Audio.currentTime = Math.max(0, phase2Audio.currentTime - 15); };
-forward15.onclick = () => { phase2Audio.currentTime = Math.min(phase2Audio.duration, phase2Audio.currentTime + 15); };
-masterToggle.onclick = () => {
+function displayPhase2Time() {
   if (!phase2Audio) return;
-  if (phase2Playing) phase2Audio.pause();
-  else phase2Audio.play().catch(() => { phase2Audio.load(); phase2Audio.play(); });
-};
+  timeDisplay.textContent = `Playback Time: ${formatTime(phase2Audio.currentTime)} / Total Duration: ${formatTime(phase2Audio.duration || 0)}`;
+}
 
-startBtn.onclick = () => {
-  if (!fileInput.files[0]) return alert('Please select an MP3 file.');
-  if (audio) audio.pause();
+back15.addEventListener('click', () => {
+  if (!phase2Audio) return;
+  phase2Audio.currentTime = Math.max(0, phase2Audio.currentTime - 15);
+  drawPhase2Cursor();
+});
+
+forward15.addEventListener('click', () => {
+  if (!phase2Audio) return;
+  phase2Audio.currentTime = Math.min(phase2Audio.duration, phase2Audio.currentTime + 15);
+  drawPhase2Cursor();
+});
+
+masterToggle.addEventListener('click', () => {
+  if (!phase2Audio) return;
+  if (phase2Playing) {
+    phase2Audio.pause();
+  } else {
+    phase2Audio.play().catch(() => {
+      phase2Audio.load();
+      phase2Audio.play().catch(console.error);
+    });
+  }
+});
+
+startBtn.addEventListener('click', () => {
+  if (!fileInput.files[0]) {
+    alert('Please select an MP3 file first.');
+    return;
+  }
+  if (audio) {
+    audio.pause();
+    audio.src = '';
+    audio = null;
+  }
 
   audio = new Audio();
   audio.src = URL.createObjectURL(fileInput.files[0]);
@@ -310,34 +337,70 @@ startBtn.onclick = () => {
   rowTimestamps = [];
 
   createNewRow();
+
   audio.play();
   isPaused = false;
   pauseBtn.disabled = false;
 
+  audio.addEventListener('ended', () => {
+    spectrogramComplete = true;
+    navButtons.style.display = 'block';
+    audio.currentTime = 0;
+    setupPhase2();
+  });
+
   drawSpectrogram();
-};
+});
 
-pauseBtn.onclick = () => {
+pauseBtn.addEventListener('click', () => {
   if (!audio) return;
-  isPaused = !isPaused;
-  if (isPaused) audio.pause();
-  else audio.play();
-};
+  if (isPaused) {
+    audio.play();
+    isPaused = false;
+  } else {
+    audio.pause();
+    isPaused = true;
+  }
+});
 
-saveBtn.onclick = () => alert('Save PNG not implemented in this demo.');
+// FIXED: Implement PNG export functionality
+saveBtn.addEventListener('click', () => {
+  if (spectroCanvases.length === 0) {
+    alert('No spectrogram to save');
+    return;
+  }
+  
+  // Create a container canvas for the full spectrogram
+  const fullHeight = spectroCanvases.length * canvasHeight;
+  const container = document.createElement('canvas');
+  container.width = canvasWidth;
+  container.height = fullHeight;
+  const ctx = container.getContext('2d');
+  
+  // Draw all spectrogram rows
+  spectroCanvases.forEach((row, index) => {
+    ctx.drawImage(row.canvas, 0, index * canvasHeight);
+  });
+  
+  // Create download link
+  const link = document.createElement('a');
+  link.download = 'spectrogram.png';
+  link.href = container.toDataURL('image/png');
+  link.click();
+});
 
-fileInput.onchange = () => {
+fileInput.addEventListener('change', () => {
   if (!fileInput.files[0]) {
     timeDisplay.textContent = 'No file loaded.';
     durationDisplay.textContent = '';
   } else {
-    const tmp = new Audio();
-    tmp.src = URL.createObjectURL(fileInput.files[0]);
-    tmp.onloadedmetadata = () => {
-      durationDisplay.textContent = 'Total Duration: ' + formatTime(tmp.duration);
-    };
+    const tempAudio = document.createElement('audio');
+    tempAudio.src = URL.createObjectURL(fileInput.files[0]);
+    tempAudio.addEventListener('loadedmetadata', () => {
+      durationDisplay.textContent = 'Total Duration: ' + formatTime(tempAudio.duration);
+    });
   }
-};
+});
 </script>
 
 </body>
