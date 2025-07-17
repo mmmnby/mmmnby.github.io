@@ -43,6 +43,7 @@
   </div>
 
 <script>
+  // ---- Constants ----
   const SCREEN_WIDTH = window.innerWidth;
   const ROW_HEIGHT = 300;
   const MINUTE_TICK_HEIGHT = 10;
@@ -51,6 +52,7 @@
   const PIXEL_LABEL_INTERVAL = 100;
   const LABEL_PADDING = 6;
 
+  // ---- DOM Elements ----
   const fileInput = document.getElementById('fileInput');
   const playbackSpeedSelect = document.getElementById('playbackSpeedSelect');
   const startGenerateButton = document.getElementById('startGenerateButton');
@@ -64,6 +66,7 @@
   const playPauseButton = document.getElementById('playPauseButton');
   const forward15Seconds = document.getElementById('forward15Seconds');
 
+  // ---- State Variables ----
   let generatePhaseAudio = null;
   let audioAnalyzer = null;
   let audioDataArray = null;
@@ -72,7 +75,6 @@
   let hasFinishedSpectrogram = false;
   let generatePhasePaused = false;
   let generatePhaseAnimationId = null;
-  let audioCtx = null;
 
   const spectrogramRows = [];
   const cursorOverlayRows = [];
@@ -81,11 +83,13 @@
   let playbackPhaseAudio = null;
   let playbackPhasePlaying = false;
 
+  // ---- Utility Formatter ----
   function formatTime(t) {
     const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = Math.floor(t%60);
     return `${h}h${m}m${s}s`;
   }
 
+  // ---- PHASE 1 DISPLAY UPDATE ----
   function updateTimeStatus() {
     if (!generatePhaseAudio) {
       timeStatus.textContent = 'No file loaded.';
@@ -95,6 +99,7 @@
     timeStatus.textContent = `Processing: ${formatTime(cur)} / ${formatTime(dur)}`;
   }
 
+  // ---- Create New Row for Spectrogram + Cursor Overlay ----
   function createSpectrogramRow() {
     const rowDiv = document.createElement('div');
     rowDiv.className='canvasRowContainer';
@@ -122,10 +127,14 @@
     drawXPosition = 0;
   }
 
+  // ---- Spectrogram Drawing Loop ----
   function drawSpectrogramFrame() {
-    if (generatePhaseAudio.paused || generatePhasePaused) return;
+    if (generatePhaseAudio.paused || generatePhasePaused) {
+      return;
+    }
 
     audioAnalyzer.getByteFrequencyData(audioDataArray);
+
     if (drawXPosition >= SCREEN_WIDTH) createSpectrogramRow();
 
     const currentRow = spectrogramRows[spectrogramRows.length - 1];
@@ -166,19 +175,16 @@
     }
   }
 
+  // ---- Finalize After Spectrogram Generation Completes ----
   function handleSpectrogramCompletion() {
-    if (hasFinishedSpectrogram) return;
     cancelAnimationFrame(generatePhaseAnimationId);
     finalRowWidth = drawXPosition;
     hasFinishedSpectrogram = true;
-
-    startGenerateButton.disabled = true;
-    pauseGenerateButton.disabled = true;
     playerControls.style.display = 'block';
-
     setupPlaybackPhase();
   }
 
+  // ---- PHASE 2: Playback Setup ----
   function setupPlaybackPhase() {
     if (!hasFinishedSpectrogram) return;
     if (playbackPhaseAudio) { playbackPhaseAudio.pause(); playbackPhaseAudio = null; }
@@ -195,19 +201,11 @@
         if (!playbackPhaseAudio) return;
         const rect = canvas.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
-
-        const isLastRow = idx === rowStartTimeMarkers.length - 1;
-        const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
-
         const t0 = rowStartTimeMarkers[idx];
         const t1 = rowStartTimeMarkers[idx+1] || playbackPhaseAudio.duration;
-        const seekTime = t0 + clickX / rowWidth * (t1 - t0);
-
+        const seekTime = t0 + clickX / SCREEN_WIDTH * (t1 - t0);
         playbackPhaseAudio.currentTime = seekTime;
-        playbackPhaseAudio.play().catch(() => {
-          playbackPhaseAudio.load();
-          playbackPhaseAudio.play();
-        });
+        playbackPhaseAudio.play().catch(() => { playbackPhaseAudio.load(); playbackPhaseAudio.play(); });
         drawPlaybackCursor();
       });
     });
@@ -216,74 +214,52 @@
     playbackPhaseAudio.addEventListener('play', () => { playbackPhasePlaying = true; playPauseButton.textContent = 'Pause'; });
     playbackPhaseAudio.addEventListener('pause', () => { playbackPhasePlaying = false; playPauseButton.textContent = 'Play'; });
     playbackPhaseAudio.addEventListener('ended', () => { playbackPhasePlaying = false; playPauseButton.textContent = 'Play'; });
-    playbackPhaseAudio.addEventListener('timeupdate', () => {
-      timeStatus.textContent = `Playback: ${formatTime(playbackPhaseAudio.currentTime)} / ${formatTime(playbackPhaseAudio.duration)}`;
-      drawPlaybackCursor();
-    });
+    playbackPhaseAudio.addEventListener('timeupdate', () => { timeStatus.textContent = `Playback: ${formatTime(playbackPhaseAudio.currentTime)} / ${formatTime(playbackPhaseAudio.duration)}`; drawPlaybackCursor(); });
   }
 
+  // ---- Render Playback Cursor ----
   function drawPlaybackCursor() {
     if (!playbackPhaseAudio) return;
     const t = playbackPhaseAudio.currentTime;
 
     cursorOverlayRows.forEach(({ canvas, ctx }, idx) => {
       ctx.clearRect(0, 0, SCREEN_WIDTH, ROW_HEIGHT);
-
       const t0 = rowStartTimeMarkers[idx];
       const t1 = rowStartTimeMarkers[idx+1] || playbackPhaseAudio.duration;
-
       if (t < t0 || t > t1) return;
-
-      const isLastRow = idx === rowStartTimeMarkers.length - 1;
-      const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
-
-      const x = (t - t0) / (t1 - t0) * rowWidth;
-
-      ctx.lineWidth = 5; ctx.strokeStyle = 'red';
-      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, ROW_HEIGHT); ctx.stroke();
-
-      ctx.lineWidth = 3; ctx.strokeStyle = 'white';
-      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, ROW_HEIGHT); ctx.stroke();
-
-      ctx.lineWidth = 1; ctx.strokeStyle = 'black';
-      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, ROW_HEIGHT); ctx.stroke();
+      const x = (t - t0) / (t1 - t0) * SCREEN_WIDTH;
+      ctx.lineWidth=5; ctx.strokeStyle='red'; ctx.beginPath(); ctx.moveTo(x+0.5,0); ctx.lineTo(x+0.5,ROW_HEIGHT); ctx.stroke();
+      ctx.lineWidth=3; ctx.strokeStyle='white'; ctx.beginPath(); ctx.moveTo(x+0.5,0); ctx.lineTo(x+0.5,ROW_HEIGHT); ctx.stroke();
+      ctx.lineWidth=1; ctx.strokeStyle='black'; ctx.beginPath(); ctx.moveTo(x+0.5,0); ctx.lineTo(x+0.5,ROW_HEIGHT); ctx.stroke();
     });
   }
 
+  // ---- Playback Control Buttons ----
   rewind15Seconds.addEventListener('click', () => {
     if (!playbackPhaseAudio) return;
     playbackPhaseAudio.currentTime = Math.max(0, playbackPhaseAudio.currentTime - 15);
     drawPlaybackCursor();
   });
-
   forward15Seconds.addEventListener('click', () => {
     if (!playbackPhaseAudio) return;
     playbackPhaseAudio.currentTime = Math.min(playbackPhaseAudio.duration, playbackPhaseAudio.currentTime + 15);
     drawPlaybackCursor();
   });
-
   playPauseButton.addEventListener('click', () => {
     if (!playbackPhaseAudio) return;
-    playbackPhasePlaying ? playbackPhaseAudio.pause() : playbackPhaseAudio.play().catch(() => {
-      playbackPhaseAudio.load();
-      playbackPhaseAudio.play();
-    });
+    playbackPhasePlaying ? playbackPhaseAudio.pause() : playbackPhaseAudio.play().catch(() => { playbackPhaseAudio.load(); playbackPhaseAudio.play(); });
   });
 
+  // ---- Start Phase 1 (Generate Spectrogram) ----
   startGenerateButton.addEventListener('click', () => {
     if (!fileInput.files[0]) return alert('Choose an MP3 file.');
     if (generatePhaseAudio) { generatePhaseAudio.pause(); generatePhaseAudio = null; }
-
-    if (audioCtx) {
-      audioCtx.close();
-      audioCtx = null;
-    }
-    audioCtx = new AudioContext();
 
     generatePhaseAudio = new Audio(URL.createObjectURL(fileInput.files[0]));
     generatePhaseAudio.crossOrigin = 'anonymous';
     generatePhaseAudio.playbackRate = parseFloat(playbackSpeedSelect.value);
 
+    const audioCtx = new AudioContext();
     audioAnalyzer = audioCtx.createAnalyser();
     const srcNode = audioCtx.createMediaElementSource(generatePhaseAudio);
     srcNode.connect(audioAnalyzer);
@@ -307,6 +283,7 @@
     drawSpectrogramFrame();
   });
 
+  // ---- Pause Phase 1 ----
   pauseGenerateButton.addEventListener('click', () => {
     if (!generatePhaseAudio) return;
     if (generatePhasePaused) {
@@ -320,6 +297,7 @@
     }
   });
 
+  // ---- Show File Duration ----
   fileInput.addEventListener('change', () => {
     if (!fileInput.files[0]) {
       timeStatus.textContent = 'No file loaded.';
@@ -333,6 +311,7 @@
     });
   });
 
+  // ---- Export Placeholder ----
   exportButton.addEventListener('click', () => {
     alert('Export not implemented.');
   });
