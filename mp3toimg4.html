@@ -163,33 +163,26 @@ function drawSpectrogram() {
   animationId = requestAnimationFrame(drawSpectrogram);
 
   if (audio.ended || audio.currentTime >= audio.duration) {
-  spectrogramComplete = true;
+    spectrogramComplete = true;
 
-  const last = spectroCanvases[spectroCanvases.length - 1];
-  const ctx = last.ctx;
-
-  if (drawX < canvasWidth) {
-    timeDisplay.textContent = 'Filling...';
-
-    const squareSize = 6;
-    while (drawX < canvasWidth) {
-      for (let y = 0; y < usableHeight; y += squareSize) {
-        const isLight = ((drawX / squareSize) ^ (y / squareSize)) % 2 === 0;
-        ctx.fillStyle = isLight ? '#444' : '#222';
-        ctx.fillRect(drawX, y, squareSize, squareSize);
+    // Fill remainder of last row to canvas edge with checkerboard
+    const last = spectroCanvases[spectroCanvases.length - 1];
+    if (drawX < canvasWidth) {
+      const ctx = last.ctx;
+      const squareSize = 6;
+      for (let x = drawX; x < canvasWidth; x += squareSize) {
+        for (let y = 0; y < usableHeight; y += squareSize) {
+          const isLight = ((x / squareSize) ^ (y / squareSize)) % 2 === 0;
+          ctx.fillStyle = isLight ? '#444' : '#222';
+          ctx.fillRect(x, y, squareSize, squareSize);
+        }
       }
-      drawX += squareSize;
     }
-  }
 
-  // Ensure alignment by forcing a final row if drawX == canvasWidth
-  if (drawX >= canvasWidth) {
-    createNewRow();
+    navButtons.style.display = 'block';
+    audio.currentTime = 0;
+    setupPhase2();
   }
-
-  navButtons.style.display = 'block';
-  audio.currentTime = 0;
-  setupPhase2();
 }
 
 // [Phase 2 setup, cursor, and controls remain unchanged — see your original full code above]
