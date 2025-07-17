@@ -178,6 +178,8 @@
   // ---- Finalize After Spectrogram Generation Completes ----
   function handleSpectrogramCompletion() {
     if (hasFinishedSpectrogram) return;
+    startGenerateButton.disabled = true;
+    pauseGenerateButton.disabled = true;
     cancelAnimationFrame(generatePhaseAnimationId);
     finalRowWidth = drawXPosition;
     hasFinishedSpectrogram = true;
