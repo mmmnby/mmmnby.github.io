@@ -133,64 +133,75 @@
     }
 
     function drawSpectrogramFrame() {
-      if (!generatePhaseAudio || generatePhaseAudio.paused || generatePhaseAudio.ended || generatePhasePaused) {
-        return;
-      }
+  if (!generatePhaseAudio || generatePhaseAudio.paused || generatePhasePaused) {
+    return;
+  }
 
-      audioAnalyzer.getByteFrequencyData(audioDataArray);
+  // Draw frequency data
+  audioAnalyzer.getByteFrequencyData(audioDataArray);
 
-      if (drawXPosition >= SCREEN_WIDTH) {
-        createSpectrogramRow();
-      }
+  // Create new row if needed
+  if (drawXPosition >= SCREEN_WIDTH) {
+    createSpectrogramRow();
+  }
 
-      const currentRow = spectrogramRows[spectrogramRows.length - 1];
-      const ctx = currentRow.ctx;
+  const currentRow = spectrogramRows[spectrogramRows.length - 1];
+  const ctx = currentRow.ctx;
 
-      for (let i = 0; i < audioAnalyzer.frequencyBinCount; i++) {
-        const value = audioDataArray[i];
-        ctx.fillStyle = `hsl(${value * 1.5}, 100%, 50%)`;
-        ctx.fillRect(drawXPosition, USEFUL_CANVAS_HEIGHT - i, 1, 1);
-      }
+  // Plot frequency bars
+  for (let i = 0; i < audioAnalyzer.frequencyBinCount; i++) {
+    const value = audioDataArray[i];
+    ctx.fillStyle = `hsl(${value * 1.5}, 100%, 50%)`;
+    ctx.fillRect(drawXPosition, USEFUL_CANVAS_HEIGHT - i, 1, 1);
+  }
 
-      const elapsedSec = Math.floor(generatePhaseAudio.currentTime);
+  // Tick marks and time labels
+  const elapsedSec = Math.floor(generatePhaseAudio.currentTime);
 
-      if (elapsedSec % 60 === 0) {
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = (elapsedSec % 900 === 0 ? 2 : 1);
-        ctx.beginPath();
-        ctx.moveTo(drawXPosition + 0.5, USEFUL_CANVAS_HEIGHT);
-        ctx.lineTo(drawXPosition + 0.5, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT);
-        ctx.stroke();
-      }
+  if (elapsedSec % 60 === 0) {
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = (elapsedSec % 900 === 0 ? 2 : 1);
+    ctx.beginPath();
+    ctx.moveTo(drawXPosition + 0.5, USEFUL_CANVAS_HEIGHT);
+    ctx.lineTo(drawXPosition + 0.5, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT);
+    ctx.stroke();
+  }
 
-      if (drawXPosition % PIXEL_LABEL_INTERVAL === 0) {
-        const label = formatTime(generatePhaseAudio.currentTime);
-        const tw = ctx.measureText(label).width;
-        ctx.fillStyle = '#000';
-        ctx.fillRect(
-          drawXPosition - tw / 2 - LABEL_PADDING,
-          USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT,
-          tw + 2 * LABEL_PADDING,
-          LABEL_AREA_HEIGHT
-        );
-        ctx.fillStyle = '#fff';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.font = '12px sans-serif';
-        ctx.fillText(label, drawXPosition, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT + 2);
-      }
+  if (drawXPosition % PIXEL_LABEL_INTERVAL === 0) {
+    const label = formatTime(generatePhaseAudio.currentTime);
+    const tw = ctx.measureText(label).width;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(
+      drawXPosition - tw / 2 - LABEL_PADDING,
+      USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT,
+      tw + 2 * LABEL_PADDING,
+      LABEL_AREA_HEIGHT
+    );
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = '12px sans-serif';
+    ctx.fillText(label, drawXPosition, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT + 2);
+  }
 
-      drawXPosition++;
-      updateTimeStatus();
-      generatePhaseAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+  drawXPosition++;
+  updateTimeStatus();
 
-      if (generatePhaseAudio.ended) {
-        finalRowWidth = drawXPosition;
-        hasFinishedSpectrogram = true;
-        playerControls.style.display = 'block';
-        setupPlaybackPhase();
-      }
-    }
+  //  Manual end detection
+  if (
+    generatePhaseAudio.currentTime >= generatePhaseAudio.duration &&
+    !hasFinishedSpectrogram
+  ) {
+    finalRowWidth = drawXPosition;
+    hasFinishedSpectrogram = true;
+    playerControls.style.display = 'block';
+    setupPlaybackPhase();
+    return; // Stop animating
+  }
+
+  // Continue animation
+  generatePhaseAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+}
 
     // ---- Playback Phase ----
     function setupPlaybackPhase() {
