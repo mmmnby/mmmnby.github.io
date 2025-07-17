@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Spectrogram Player (Fixed)</title>
+  <style>
+    body { background: #111; color: #fff; font-family: sans-serif; margin: 0; text-align: center; }
+    .controls { padding: 10px; }
+    .controls > * { margin: 6px; font-size: 16px; }
+    #timeStatus { margin-top: 6px; font-size: 14px; font-style: italic; }
+    .canvasRowContainer { position: relative; display: inline-block; margin-bottom: 20px; }
+    canvas.spectrogramCanvas { background: #000; display: block; }
+    canvas.cursorOverlayCanvas { position: absolute; left: 0; top: 0; pointer-events: auto; }
+    #playerControls { margin: 10px; display: none; }
+    #playerControls button { margin: 0 6px; font-size: 16px; padding: 6px 12px; }
+  </style>
+</head>
+<body>
+
+  <h1>Spectrogram Player (Fixed)</h1>
+
+  <div class="controls">
+    <input type="file" id="fileInput" accept=".mp3">
+    <label> Speed:
+      <select id="playbackSpeedSelect">
+        <option>1</option><option>2</option><option>4</option>
+        <option>30</option><option>60</option><option>120</option>
+      </select> ×
+    </label>
+    <button id="startGenerateButton">Play (Phase 1)</button>
+    <button id="pauseGenerateButton" disabled>Pause</button>
+    <button id="exportButton">Download Spectrogram</button>
+    <div id="timeStatus">No file loaded.</div>
+    <div id="fileDurationStatus"></div>
+  </div>
+
+  <div id="rowsContainer"></div>
+
+  <div id="playerControls">
+    <button id="rewind15Seconds">◀ 15 s</button>
+    <button id="playPauseButton">Play/Pause</button>
+    <button id="forward15Seconds">15 s ▶</button>
+  </div>
+
+<script>
+  const SCREEN_WIDTH = window.innerWidth;
+  const ROW_HEIGHT = 300;
+  const MINUTE_TICK_HEIGHT = 10;
+  const LABEL_AREA_HEIGHT = 20;
+  const USEFUL_CANVAS_HEIGHT = ROW_HEIGHT - MINUTE_TICK_HEIGHT - LABEL_AREA_HEIGHT;
+  const PIXEL_LABEL_INTERVAL = 100;
+  const LABEL_PADDING = 6;
+
+  const fileInput = document.getElementById('fileInput');
+  const playbackSpeedSelect = document.getElementById('playbackSpeedSelect');
+  const startGenerateButton = document.getElementById('startGenerateButton');
+  const pauseGenerateButton = document.getElementById('pauseGenerateButton');
+  const exportButton = document.getElementById('exportButton');
+  const timeStatus = document.getElementById('timeStatus');
+  const fileDurationStatus = document.getElementById('fileDurationStatus');
+  const rowsContainer = document.getElementById('rowsContainer');
+  const playerControls = document.getElementById('playerControls');
+  const rewind15Seconds = document.getElementById('rewind15Seconds');
+  const playPauseButton = document.getElementById('playPauseButton');
+  const forward15Seconds = document.getElementById('forward15Seconds');
+
+  let generatePhaseAudio = null;
+  let audioAnalyzer = null;
+  let audioDataArray = null;
+  let drawXPosition = 0;
+  let finalRowWidth = 0;
+  let hasFinishedSpectrogram = false;
+  let generatePhasePaused = false;
+  let generatePhaseAnimationId = null;
+  let audioCtx = null;
+  let lastDrawTime = 0;
+
+  const spectrogramRows = [];
+  const cursorOverlayRows = [];
+  const rowStartTimeMarkers = [];
+
+  let playbackPhaseAudio = null;
+  let playbackPhasePlaying = false;
+
+  function formatTime(t) {
+    const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = Math.floor(t%60);
+    return `${h}h${m}m${s}s`;
+  }
+
+  function updateTimeStatus() {
+    if (!generatePhaseAudio) {
+      timeStatus.textContent = 'No file loaded.';
+      return;
+    }
+    const cur = generatePhaseAudio.currentTime, dur = generatePhaseAudio.duration || 0;
+    timeStatus.textContent = `Processing: ${formatTime(cur)} / ${formatTime(dur)}`;
+  }
+
+  function createSpectrogramRow() {
+    const rowDiv = document.createElement('div');
+    rowDiv.className='canvasRowContainer';
+
+    const spectroCanvas = document.createElement('canvas');
+    spectroCanvas.width = SCREEN_WIDTH;
+    spectroCanvas.height = ROW_HEIGHT;
+    spectroCanvas.className = 'spectrogramCanvas';
+    const spectroCtx = spectroCanvas.getContext('2d');
+    spectroCtx.fillStyle = '#000';
+    spectroCtx.fillRect(0,0,SCREEN_WIDTH,ROW_HEIGHT);
+    rowDiv.appendChild(spectroCanvas);
+    spectrogramRows.push({ canvas: spectroCanvas, ctx: spectroCtx });
+
+    const overlayCanvas = document.createElement('canvas');
+    overlayCanvas.width = SCREEN_WIDTH;
+    overlayCanvas.height = ROW_HEIGHT;
+    overlayCanvas.className = 'cursorOverlayCanvas';
+    const overlayCtx = overlayCanvas.getContext('2d');
+    rowDiv.appendChild(overlayCanvas);
+    cursorOverlayRows.push({ canvas: overlayCanvas, ctx: overlayCtx });
+
+    rowStartTimeMarkers.push(generatePhaseAudio.currentTime);
+    rowsContainer.appendChild(rowDiv);
+    drawXPosition = 0;
+  }
+
+  function drawSpectrogramFrame() {
+    if (!generatePhaseAudio || generatePhaseAudio.paused || generatePhasePaused) return;
+
+    const currentTime = generatePhaseAudio.currentTime;
+    const secondsPerPixel = 1 / generatePhaseAudio.playbackRate;
+
+    let pixelsToDraw = Math.floor((currentTime - lastDrawTime) / secondsPerPixel);
+    if (pixelsToDraw <= 0) {
+      generatePhaseAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+      return;
+    }
+
+    const currentRow = spectrogramRows[spectrogramRows.length - 1];
+    const ctx = currentRow.ctx;
+
+    while (pixelsToDraw-- > 0) {
+      if (drawXPosition >= SCREEN_WIDTH) {
+        createSpectrogramRow();
+        drawXPosition = 0;
+      }
+
+      audioAnalyzer.getByteFrequencyData(audioDataArray);
+
+      for (let i = 0; i < audioAnalyzer.frequencyBinCount; i++) {
+        const value = audioDataArray[i];
+        ctx.fillStyle = `hsl(${value * 1.5}, 100%, 50%)`;
+        ctx.fillRect(drawXPosition, USEFUL_CANVAS_HEIGHT - i, 1, 1);
+      }
+
+      const audioTimeAtPixel = lastDrawTime + secondsPerPixel;
+
+      if (Math.floor(audioTimeAtPixel) % 60 === 0) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = (Math.floor(audioTimeAtPixel) % 900 === 0 ? 2 : 1);
+        ctx.beginPath();
+        ctx.moveTo(drawXPosition + 0.5, USEFUL_CANVAS_HEIGHT);
+        ctx.lineTo(drawXPosition + 0.5, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT);
+        ctx.stroke();
+      }
+
+      if (drawXPosition % PIXEL_LABEL_INTERVAL === 0) {
+        const label = formatTime(audioTimeAtPixel);
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(drawXPosition - tw / 2 - LABEL_PADDING, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT, tw + 2 * LABEL_PADDING, LABEL_AREA_HEIGHT);
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.font = '12px sans-serif';
+        ctx.fillText(label, drawXPosition, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT + 2);
+      }
+
+      drawXPosition++;
+      lastDrawTime += secondsPerPixel;
+    }
+
+    updateTimeStatus();
+
+    if (currentTime >= generatePhaseAudio.duration - 0.05) {
+      handleSpectrogramCompletion();
+      return;
+    }
+
+    generatePhaseAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+  }
+
+  function handleSpectrogramCompletion() {
+    if (hasFinishedSpectrogram) return;
+    cancelAnimationFrame(generatePhaseAnimationId);
+    finalRowWidth = drawXPosition;
+    hasFinishedSpectrogram = true;
+
+    startGenerateButton.disabled = true;
+    pauseGenerateButton.disabled = true;
+    playerControls.style.display = 'block';
+
+    setupPlaybackPhase();
+  }
+
+  function setupPlaybackPhase() {
+    if (!hasFinishedSpectrogram) return;
+    if (playbackPhaseAudio) { playbackPhaseAudio.pause(); playbackPhaseAudio = null; }
+
+    playbackPhaseAudio = new Audio(URL.createObjectURL(fileInput.files[0]));
+    playbackPhaseAudio.crossOrigin = 'anonymous';
+    playbackPhaseAudio.preload = 'auto';
+    playbackPhaseAudio.playbackRate = 1.0;
+    playbackPhasePlaying = false;
+
+    cursorOverlayRows.forEach(({ canvas, ctx }, idx) => {
+      canvas.style.pointerEvents = 'auto';
+      canvas.addEventListener('click', e => {
+        if (!playbackPhaseAudio) return;
+        const rect = canvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+
+        const isLastRow = idx === rowStartTimeMarkers.length - 1;
+        const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
+
+        const t0 = rowStartTimeMarkers[idx];
+        const t1 = rowStartTimeMarkers[idx+1] || playbackPhaseAudio.duration;
+        if (t1 === t0) return;
+
+        const seekTime = t0 + clickX / rowWidth * (t1 - t0);
+        playbackPhaseAudio.currentTime = seekTime;
+        playbackPhaseAudio.play().catch(() => {
+          playbackPhaseAudio.load();
+          playbackPhaseAudio.play();
+        });
+        drawPlaybackCursor();
+      });
+    });
+
+    playerControls.style.display = 'block';
+    playbackPhaseAudio.addEventListener('play', () => { playbackPhasePlaying = true; playPauseButton.textContent = 'Pause'; });
+    playbackPhaseAudio.addEventListener('pause', () => { playbackPhasePlaying = false; playPauseButton.textContent = 'Play'; });
+    playbackPhaseAudio.addEventListener('ended', () => { playbackPhasePlaying = false; playPauseButton.textContent = 'Play'; });
+    playbackPhaseAudio.addEventListener('timeupdate', () => {
+      timeStatus.textContent = `Playback: ${formatTime(playbackPhaseAudio.currentTime)} / ${formatTime(playbackPhaseAudio.duration)}`;
+      drawPlaybackCursor();
+    });
+  }
+
+  function drawPlaybackCursor() {
+    if (!playbackPhaseAudio) return;
+    const t = playbackPhaseAudio.currentTime;
+
+    cursorOverlayRows.forEach(({ canvas, ctx }, idx) => {
+      ctx.clearRect(0, 0, SCREEN_WIDTH, ROW_HEIGHT);
+
+      const t0 = rowStartTimeMarkers[idx];
+      const t1 = rowStartTimeMarkers[idx+1] || playbackPhaseAudio.duration;
+
+      if (t < t0 || t > t1) return;
+
+      const isLastRow = idx === rowStartTimeMarkers.length - 1;
+      const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
+
+      const x = (t - t0) / (t1 - t0) * rowWidth;
+
+      ctx.lineWidth = 5; ctx.strokeStyle = 'red';
+      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, ROW_HEIGHT); ctx.stroke();
+
+      ctx.lineWidth = 3; ctx.strokeStyle = 'white';
+      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, ROW_HEIGHT); ctx.stroke();
+
+      ctx.lineWidth = 1; ctx.strokeStyle = 'black';
+      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, ROW_HEIGHT); ctx.stroke();
+    });
+  }
+
+  rewind15Seconds.addEventListener('click', () => {
+    if (!playbackPhaseAudio) return;
+    playbackPhaseAudio.currentTime = Math.max(0, playbackPhaseAudio.currentTime - 15);
+    drawPlaybackCursor();
+  });
+
+  forward15Seconds.addEventListener('click', () => {
+    if (!playbackPhaseAudio) return;
+    playbackPhaseAudio.currentTime = Math.min(playbackPhaseAudio.duration, playbackPhaseAudio.currentTime + 15);
+    drawPlaybackCursor();
+  });
+
+  playPauseButton.addEventListener('click', () => {
+    if (!playbackPhaseAudio) return;
+    playbackPhasePlaying ? playbackPhaseAudio.pause() : playbackPhaseAudio.play().catch(() => {
+      playbackPhaseAudio.load();
+      playbackPhaseAudio.play();
+    });
+  });
+
+  startGenerateButton.addEventListener('click', async () => {
+    if (!fileInput.files[0]) return alert('Choose an MP3 file.');
+    if (generatePhaseAudio) { generatePhaseAudio.pause(); generatePhaseAudio = null; }
+
+    if (audioCtx) {
+      await audioCtx.close();
+      audioCtx = null;
+    }
+
+    audioCtx = new AudioContext();
+    lastDrawTime = 0;
+
+    generatePhaseAudio = new Audio(URL.createObjectURL(fileInput.files[0]));
+    generatePhaseAudio.crossOrigin = 'anonymous';
+    generatePhaseAudio.playbackRate = parseFloat(playbackSpeedSelect.value);
+
+    audioAnalyzer = audioCtx.createAnalyser();
+    const srcNode = audioCtx.createMediaElementSource(generatePhaseAudio);
+    srcNode.connect(audioAnalyzer);
+    audioAnalyzer.connect(audioCtx.destination);
+    audioDataArray = new Uint8Array(audioAnalyzer.frequencyBinCount);
+
+    drawXPosition = 0;
+    hasFinishedSpectrogram = false;
+    finalRowWidth = 0;
+    generatePhasePaused = false;
+
+    rowsContainer.innerHTML = '';
+    spectrogramRows.length = 0;
+    cursorOverlayRows.length = 0;
+    rowStartTimeMarkers.length = 0;
+
+    createSpectrogramRow();
+    generatePhaseAudio.play().catch(console.error);
+    pauseGenerateButton.disabled = false;
+
+    drawSpectrogramFrame();
+  });
+
+  pauseGenerateButton.addEventListener('click', () => {
+    if (!generatePhaseAudio) return;
+    if (generatePhasePaused) {
+      generatePhaseAudio.play();
+      generatePhasePaused = false;
+      drawSpectrogramFrame();
+    } else {
+      generatePhaseAudio.pause();
+      generatePhasePaused = true;
+      cancelAnimationFrame(generatePhaseAnimationId);
+    }
+  });
+
+  generatePhaseAudio?.addEventListener('ended', handleSpectrogramCompletion);
+
+  fileInput.addEventListener('change', () => {
+    if (!fileInput.files[0]) {
+      timeStatus.textContent = 'No file loaded.';
+      fileDurationStatus.textContent = '';
+      return;
+    }
+    const tempAudio = document.createElement('audio');
+    tempAudio.src = URL.createObjectURL(fileInput.files[0]);
+    tempAudio.addEventListener('loadedmetadata', () => {
+      fileDurationStatus.textContent = 'Total Duration: ' + formatTime(tempAudio.duration);
+    });
+  });
+
+  exportButton.addEventListener('click', () => {
+    alert('Export not yet implemented. Planned: merge all canvases into one image.');
+  });
+</script>
+
+</body>
+</html>
