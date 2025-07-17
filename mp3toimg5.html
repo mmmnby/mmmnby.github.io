@@ -160,14 +160,11 @@
     updateTimeStatus();
     generatePhaseAnimationId = requestAnimationFrame(drawSpectrogramFrame);
 
-    if (generatePhaseAudio.ended || generatePhaseAudio.currentTime >= generatePhaseAudio.duration) {
+    if (generatePhaseAudio.ended || generatePhaseAudio.currentTime >= generatePhaseAudio.duration - 0.05) {
       handleSpectrogramCompletion();
       return;
       
-if (generatePhaseAudio.currentTime >= generatePhaseAudio.duration - 0.05) {
-  handleSpectrogramCompletion();
-  return;
-}
+
       
     }
   }
