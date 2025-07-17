@@ -125,17 +125,12 @@
   function drawSpectrogramFrame() {
     if (generatePhaseAudio.paused || generatePhasePaused) return;
 
+    audioAnalyzer.getByteFrequencyData(audioDataArray);
     if (drawXPosition >= SCREEN_WIDTH) {
-    // Ensure currentTime has progressed meaningfully
       if (generatePhaseAudio.currentTime - rowStartTimeMarkers[rowStartTimeMarkers.length - 1] > 0.05) {
-      createSpectrogramRow();
+        createSpectrogramRow();
       }
     }
-
-
-
-    audioAnalyzer.getByteFrequencyData(audioDataArray);
-    if (drawXPosition >= SCREEN_WIDTH) createSpectrogramRow();
 
     const currentRow = spectrogramRows[spectrogramRows.length - 1];
     const ctx = currentRow.ctx;
@@ -149,7 +144,7 @@
     const elapsedSec = Math.floor(generatePhaseAudio.currentTime);
     if (elapsedSec % 60 === 0) {
       ctx.strokeStyle = '#fff';
-      ctx.lineWidth = (elapsedSec%900===0?2:1);
+      ctx.lineWidth = (elapsedSec % 900 === 0 ? 2 : 1);
       ctx.beginPath();
       ctx.moveTo(drawXPosition+0.5,USEFUL_CANVAS_HEIGHT);
       ctx.lineTo(drawXPosition+0.5,USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT);
@@ -159,7 +154,7 @@
       const label = formatTime(generatePhaseAudio.currentTime);
       const tw = ctx.measureText(label).width;
       ctx.fillStyle='#000';
-      ctx.fillRect(drawXPosition-tw/2-LABEL_PADDING, USEFUL_CANVAS_HEIGHT+MINUTE_TICK_HEIGHT, tw+2*LABEL_PADDING, LABEL_AREA_HEIGHT);
+      ctx.fillRect(drawXPosition - tw/2 - LABEL_PADDING, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT, tw + 2 * LABEL_PADDING, LABEL_AREA_HEIGHT);
       ctx.fillStyle='#fff';
       ctx.textAlign='center'; ctx.textBaseline='top'; ctx.font='12px sans-serif';
       ctx.fillText(label, drawXPosition, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT + 2);
@@ -169,8 +164,6 @@
     updateTimeStatus();
     generatePhaseAnimationId = requestAnimationFrame(drawSpectrogramFrame);
 
-    generatePhaseAudio.addEventListener('ended', handleSpectrogramCompletion);
-    
     if (generatePhaseAudio.ended || generatePhaseAudio.currentTime >= generatePhaseAudio.duration) {
       handleSpectrogramCompletion();
       return;
@@ -191,130 +184,79 @@
   }
 
   function setupPlaybackPhase() {
-  if (!hasFinishedSpectrogram) return;
+    if (!hasFinishedSpectrogram) return;
+    if (playbackPhaseAudio) { playbackPhaseAudio.pause(); playbackPhaseAudio = null; }
 
-  // Stop and reset any existing playbackPhaseAudio
-  if (playbackPhaseAudio) {
-    playbackPhaseAudio.pause();
-    playbackPhaseAudio = null;
-  }
+    playbackPhaseAudio = new Audio(URL.createObjectURL(fileInput.files[0]));
+    playbackPhaseAudio.crossOrigin = 'anonymous';
+    playbackPhaseAudio.preload = 'auto';
+    playbackPhaseAudio.playbackRate = 1.0;
+    playbackPhasePlaying = false;
 
-  // Create a new Audio element for phase 2 playback
-  playbackPhaseAudio = new Audio(URL.createObjectURL(fileInput.files[0]));
-  playbackPhaseAudio.crossOrigin = 'anonymous';
-  playbackPhaseAudio.preload = 'auto';
-  playbackPhaseAudio.playbackRate = 1.0;
-  playbackPhasePlaying = false;
-
-  // Make each overlay canvas respond to click events for seeking
-  cursorOverlayRows.forEach(({ canvas, ctx }, idx) => {
-    canvas.style.pointerEvents = 'auto';
-    canvas.addEventListener('click', e => {
-      if (!playbackPhaseAudio) return;
-
-      const rect = canvas.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-
-      const isLastRow = idx === rowStartTimeMarkers.length - 1;
-      const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
-
-      const t0 = rowStartTimeMarkers[idx];
-      const t1 = rowStartTimeMarkers[idx + 1] || playbackPhaseAudio.duration;
-
-      if (t1 === t0) return; // Avoid division by zero
-
-      const seekTime = t0 + clickX / rowWidth * (t1 - t0);
-      playbackPhaseAudio.currentTime = seekTime;
-
-      // Try to play immediately; fallback to reload if needed
-      playbackPhaseAudio.play().catch(() => {
-        playbackPhaseAudio.load();
-        playbackPhaseAudio.play();
+    // Media Session API (Lock Screen Controls)
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: fileInput.files[0].name,
+        artist: 'Spectrogram Player',
+        album: 'Phase 2 Playback',
+        artwork: [
+          { src: 'https://via.placeholder.com/512x512.png?text=Spectrogram', sizes: '512x512', type: 'image/png' }
+        ]
       });
 
-      drawPlaybackCursor();
-    });
-  });
-
-  // Show playback controls on screen
-  playerControls.style.display = 'block';
-
-  // Add event listeners to update UI
-  playbackPhaseAudio.addEventListener('play', () => {
-    playbackPhasePlaying = true;
-    playPauseButton.textContent = 'Pause';
-  });
-
-  playbackPhaseAudio.addEventListener('pause', () => {
-    playbackPhasePlaying = false;
-    playPauseButton.textContent = 'Play';
-  });
-
-  playbackPhaseAudio.addEventListener('ended', () => {
-    playbackPhasePlaying = false;
-    playPauseButton.textContent = 'Play';
-  });
-
-  playbackPhaseAudio.addEventListener('timeupdate', () => {
-    timeStatus.textContent = `Playback: ${formatTime(playbackPhaseAudio.currentTime)} / ${formatTime(playbackPhaseAudio.duration)}`;
-    drawPlaybackCursor();
-
-    // Update iOS lock screen position if supported
-    if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
-      navigator.mediaSession.setPositionState({
-        duration: playbackPhaseAudio.duration,
-        playbackRate: playbackPhaseAudio.playbackRate,
-        position: playbackPhaseAudio.currentTime
+      navigator.mediaSession.setActionHandler('play', () => playbackPhaseAudio.play());
+      navigator.mediaSession.setActionHandler('pause', () => playbackPhaseAudio.pause());
+      navigator.mediaSession.setActionHandler('seekbackward', () => {
+        playbackPhaseAudio.currentTime = Math.max(0, playbackPhaseAudio.currentTime - 10);
+        drawPlaybackCursor();
+      });
+      navigator.mediaSession.setActionHandler('seekforward', () => {
+        playbackPhaseAudio.currentTime = Math.min(playbackPhaseAudio.duration, playbackPhaseAudio.currentTime + 10);
+        drawPlaybackCursor();
+      });
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.fastSeek && 'fastSeek' in playbackPhaseAudio) {
+          playbackPhaseAudio.fastSeek(details.seekTime);
+        } else {
+          playbackPhaseAudio.currentTime = details.seekTime;
+        }
+        drawPlaybackCursor();
       });
     }
-  });
 
-  // -------------------------
-  // 🎧 Media Session API Setup
-  // Enables lock screen controls on iOS (and Android)
-  // -------------------------
-  if ('mediaSession' in navigator) {
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: fileInput.files[0].name,        // Shows file name
-      artist: 'Spectrogram Player',          // Custom label
-      album: '',                             // Optional
-      artwork: [                             // Image shown on lock screen
-        { src: 'https://via.placeholder.com/512', sizes: '512x512', type: 'image/png' }
-      ]
-    });
+    cursorOverlayRows.forEach(({ canvas, ctx }, idx) => {
+      canvas.style.pointerEvents = 'auto';
+      canvas.addEventListener('click', e => {
+        if (!playbackPhaseAudio) return;
+        const rect = canvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
 
-    // Lock screen Play button
-    navigator.mediaSession.setActionHandler('play', () => {
-      playbackPhaseAudio.play();
-    });
+        const isLastRow = idx === rowStartTimeMarkers.length - 1;
+        const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
 
-    // Lock screen Pause button
-    navigator.mediaSession.setActionHandler('pause', () => {
-      playbackPhaseAudio.pause();
-    });
+        const t0 = rowStartTimeMarkers[idx];
+        const t1 = rowStartTimeMarkers[idx + 1] || playbackPhaseAudio.duration;
+        if (t1 === t0) return;
+        const seekTime = t0 + clickX / rowWidth * (t1 - t0);
 
-    // Lock screen "back 15 seconds" button
-    navigator.mediaSession.setActionHandler('seekbackward', () => {
-      playbackPhaseAudio.currentTime = Math.max(0, playbackPhaseAudio.currentTime - 15);
-      drawPlaybackCursor();
-    });
-
-    // Lock screen "forward 15 seconds" button
-    navigator.mediaSession.setActionHandler('seekforward', () => {
-      playbackPhaseAudio.currentTime = Math.min(playbackPhaseAudio.duration, playbackPhaseAudio.currentTime + 15);
-      drawPlaybackCursor();
-    });
-
-    // Initial position state (important for progress bar on lock screen)
-    if (navigator.mediaSession.setPositionState) {
-      navigator.mediaSession.setPositionState({
-        duration: playbackPhaseAudio.duration,
-        playbackRate: playbackPhaseAudio.playbackRate,
-        position: playbackPhaseAudio.currentTime
+        playbackPhaseAudio.currentTime = seekTime;
+        playbackPhaseAudio.play().catch(() => {
+          playbackPhaseAudio.load();
+          playbackPhaseAudio.play();
+        });
+        drawPlaybackCursor();
       });
-    }
+    });
+
+    playerControls.style.display = 'block';
+    playbackPhaseAudio.addEventListener('play', () => { playbackPhasePlaying = true; playPauseButton.textContent = 'Pause'; });
+    playbackPhaseAudio.addEventListener('pause', () => { playbackPhasePlaying = false; playPauseButton.textContent = 'Play'; });
+    playbackPhaseAudio.addEventListener('ended', () => { playbackPhasePlaying = false; playPauseButton.textContent = 'Play'; });
+    playbackPhaseAudio.addEventListener('timeupdate', () => {
+      timeStatus.textContent = `Playback: ${formatTime(playbackPhaseAudio.currentTime)} / ${formatTime(playbackPhaseAudio.duration)}`;
+      drawPlaybackCursor();
+    });
   }
-}
 
   function drawPlaybackCursor() {
     if (!playbackPhaseAudio) return;
@@ -325,8 +267,7 @@
 
       const t0 = rowStartTimeMarkers[idx];
       const t1 = rowStartTimeMarkers[idx+1] || playbackPhaseAudio.duration;
-
-      if (t < t0 || t > t1) return;
+      if (t < t0 || t > t1 || t1 === t0) return;
 
       const isLastRow = idx === rowStartTimeMarkers.length - 1;
       const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
@@ -364,7 +305,7 @@
     });
   });
 
-  startGenerateButton.addEventListener('click', () => {
+  startGenerateButton.addEventListener('click', async () => {
     if (!fileInput.files[0]) return alert('Choose an MP3 file.');
     if (generatePhaseAudio) { generatePhaseAudio.pause(); generatePhaseAudio = null; }
 
@@ -373,6 +314,7 @@
       audioCtx = null;
     }
     audioCtx = new AudioContext();
+    await audioCtx.resume();
 
     generatePhaseAudio = new Audio(URL.createObjectURL(fileInput.files[0]));
     generatePhaseAudio.crossOrigin = 'anonymous';
@@ -399,6 +341,7 @@
     pauseGenerateButton.disabled = false;
 
     drawSpectrogramFrame();
+    generatePhaseAudio.addEventListener('ended', handleSpectrogramCompletion);
   });
 
   pauseGenerateButton.addEventListener('click', () => {
