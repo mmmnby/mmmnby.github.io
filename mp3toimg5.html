@@ -191,47 +191,130 @@
   }
 
   function setupPlaybackPhase() {
-    if (!hasFinishedSpectrogram) return;
-    if (playbackPhaseAudio) { playbackPhaseAudio.pause(); playbackPhaseAudio = null; }
+  if (!hasFinishedSpectrogram) return;
 
-    playbackPhaseAudio = new Audio(URL.createObjectURL(fileInput.files[0]));
-    playbackPhaseAudio.crossOrigin = 'anonymous';
-    playbackPhaseAudio.preload = 'auto';
-    playbackPhaseAudio.playbackRate = 1.0;
-    playbackPhasePlaying = false;
+  // Stop and reset any existing playbackPhaseAudio
+  if (playbackPhaseAudio) {
+    playbackPhaseAudio.pause();
+    playbackPhaseAudio = null;
+  }
 
-    cursorOverlayRows.forEach(({ canvas, ctx }, idx) => {
-      canvas.style.pointerEvents = 'auto';
-      canvas.addEventListener('click', e => {
-        if (!playbackPhaseAudio) return;
-        const rect = canvas.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
+  // Create a new Audio element for phase 2 playback
+  playbackPhaseAudio = new Audio(URL.createObjectURL(fileInput.files[0]));
+  playbackPhaseAudio.crossOrigin = 'anonymous';
+  playbackPhaseAudio.preload = 'auto';
+  playbackPhaseAudio.playbackRate = 1.0;
+  playbackPhasePlaying = false;
 
-        const isLastRow = idx === rowStartTimeMarkers.length - 1;
-        const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
+  // Make each overlay canvas respond to click events for seeking
+  cursorOverlayRows.forEach(({ canvas, ctx }, idx) => {
+    canvas.style.pointerEvents = 'auto';
+    canvas.addEventListener('click', e => {
+      if (!playbackPhaseAudio) return;
 
-        const t0 = rowStartTimeMarkers[idx];
-        const t1 = rowStartTimeMarkers[idx+1] || playbackPhaseAudio.duration;
-        const seekTime = t0 + clickX / rowWidth * (t1 - t0);
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
 
-        playbackPhaseAudio.currentTime = seekTime;
-        playbackPhaseAudio.play().catch(() => {
-          playbackPhaseAudio.load();
-          playbackPhaseAudio.play();
-        });
-        drawPlaybackCursor();
+      const isLastRow = idx === rowStartTimeMarkers.length - 1;
+      const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
+
+      const t0 = rowStartTimeMarkers[idx];
+      const t1 = rowStartTimeMarkers[idx + 1] || playbackPhaseAudio.duration;
+
+      if (t1 === t0) return; // Avoid division by zero
+
+      const seekTime = t0 + clickX / rowWidth * (t1 - t0);
+      playbackPhaseAudio.currentTime = seekTime;
+
+      // Try to play immediately; fallback to reload if needed
+      playbackPhaseAudio.play().catch(() => {
+        playbackPhaseAudio.load();
+        playbackPhaseAudio.play();
       });
-    });
 
-    playerControls.style.display = 'block';
-    playbackPhaseAudio.addEventListener('play', () => { playbackPhasePlaying = true; playPauseButton.textContent = 'Pause'; });
-    playbackPhaseAudio.addEventListener('pause', () => { playbackPhasePlaying = false; playPauseButton.textContent = 'Play'; });
-    playbackPhaseAudio.addEventListener('ended', () => { playbackPhasePlaying = false; playPauseButton.textContent = 'Play'; });
-    playbackPhaseAudio.addEventListener('timeupdate', () => {
-      timeStatus.textContent = `Playback: ${formatTime(playbackPhaseAudio.currentTime)} / ${formatTime(playbackPhaseAudio.duration)}`;
       drawPlaybackCursor();
     });
+  });
+
+  // Show playback controls on screen
+  playerControls.style.display = 'block';
+
+  // Add event listeners to update UI
+  playbackPhaseAudio.addEventListener('play', () => {
+    playbackPhasePlaying = true;
+    playPauseButton.textContent = 'Pause';
+  });
+
+  playbackPhaseAudio.addEventListener('pause', () => {
+    playbackPhasePlaying = false;
+    playPauseButton.textContent = 'Play';
+  });
+
+  playbackPhaseAudio.addEventListener('ended', () => {
+    playbackPhasePlaying = false;
+    playPauseButton.textContent = 'Play';
+  });
+
+  playbackPhaseAudio.addEventListener('timeupdate', () => {
+    timeStatus.textContent = `Playback: ${formatTime(playbackPhaseAudio.currentTime)} / ${formatTime(playbackPhaseAudio.duration)}`;
+    drawPlaybackCursor();
+
+    // Update iOS lock screen position if supported
+    if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
+      navigator.mediaSession.setPositionState({
+        duration: playbackPhaseAudio.duration,
+        playbackRate: playbackPhaseAudio.playbackRate,
+        position: playbackPhaseAudio.currentTime
+      });
+    }
+  });
+
+  // -------------------------
+  // 🎧 Media Session API Setup
+  // Enables lock screen controls on iOS (and Android)
+  // -------------------------
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: fileInput.files[0].name,        // Shows file name
+      artist: 'Spectrogram Player',          // Custom label
+      album: '',                             // Optional
+      artwork: [                             // Image shown on lock screen
+        { src: 'https://via.placeholder.com/512', sizes: '512x512', type: 'image/png' }
+      ]
+    });
+
+    // Lock screen Play button
+    navigator.mediaSession.setActionHandler('play', () => {
+      playbackPhaseAudio.play();
+    });
+
+    // Lock screen Pause button
+    navigator.mediaSession.setActionHandler('pause', () => {
+      playbackPhaseAudio.pause();
+    });
+
+    // Lock screen "back 15 seconds" button
+    navigator.mediaSession.setActionHandler('seekbackward', () => {
+      playbackPhaseAudio.currentTime = Math.max(0, playbackPhaseAudio.currentTime - 15);
+      drawPlaybackCursor();
+    });
+
+    // Lock screen "forward 15 seconds" button
+    navigator.mediaSession.setActionHandler('seekforward', () => {
+      playbackPhaseAudio.currentTime = Math.min(playbackPhaseAudio.duration, playbackPhaseAudio.currentTime + 15);
+      drawPlaybackCursor();
+    });
+
+    // Initial position state (important for progress bar on lock screen)
+    if (navigator.mediaSession.setPositionState) {
+      navigator.mediaSession.setPositionState({
+        duration: playbackPhaseAudio.duration,
+        playbackRate: playbackPhaseAudio.playbackRate,
+        position: playbackPhaseAudio.currentTime
+      });
+    }
   }
+}
 
   function drawPlaybackCursor() {
     if (!playbackPhaseAudio) return;
