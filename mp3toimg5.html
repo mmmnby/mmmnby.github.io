@@ -164,8 +164,7 @@
       handleSpectrogramCompletion();
       return;
       
-if (!hasFinishedSpectrogram &&
-    generatePhaseAudio.currentTime >= generatePhaseAudio.duration - 0.05) {
+if (generatePhaseAudio.currentTime >= generatePhaseAudio.duration - 0.05) {
   handleSpectrogramCompletion();
   return;
 }
