@@ -163,21 +163,51 @@ function drawSpectrogram() {
   animationId = requestAnimationFrame(drawSpectrogram);
 
   if (audio.ended || audio.currentTime >= audio.duration) {
-    spectrogramComplete = true;
+  // Continue drawing until last row reaches full width
+  if (drawX < canvasWidth) {
+    updatePhase1TimeDisplay();
+    const { ctx } = spectroCanvases[spectroCanvases.length - 1];
 
-    // Fill remainder of last row to canvas edge with checkerboard
-    const last = spectroCanvases[spectroCanvases.length - 1];
-    if (drawX < canvasWidth) {
-      const ctx = last.ctx;
-      const squareSize = 6;
-      for (let x = drawX; x < canvasWidth; x += squareSize) {
-        for (let y = 0; y < usableHeight; y += squareSize) {
-          const isLight = ((x / squareSize) ^ (y / squareSize)) % 2 === 0;
-          ctx.fillStyle = isLight ? '#444' : '#222';
-          ctx.fillRect(x, y, squareSize, squareSize);
-        }
-      }
+    // Fill with a subtle checker pattern or just black
+    for (let y = 0; y < analyser.frequencyBinCount; y++) {
+      ctx.fillStyle = '#111'; // use very dark gray for fill
+      ctx.fillRect(drawX, usableHeight - y, 1, 1);
     }
+
+    // Add tick marks and labels even for filler data
+    const elapsed = Math.floor(audio.duration);
+    if (elapsed % 60 === 0) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = (elapsed % 900 === 0 ? 2 : 1);
+      ctx.beginPath();
+      ctx.moveTo(drawX + 0.5, usableHeight);
+      ctx.lineTo(drawX + 0.5, usableHeight + tickHeight);
+      ctx.stroke();
+    }
+
+    if (drawX % labelInterval === 0) {
+      const label = formatTime(audio.duration);
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(drawX - tw / 2 - labelPadding, usableHeight + tickHeight, tw + 2 * labelPadding, labelHeight);
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.font = '12px sans-serif';
+      ctx.fillText(label, drawX, usableHeight + tickHeight + 2);
+    }
+
+    drawX++;
+    animationId = requestAnimationFrame(drawSpectrogram);
+    return;
+  }
+
+  // Only once the row is full width, proceed to Phase 2
+  spectrogramComplete = true;
+  navButtons.style.display = 'block';
+  audio.currentTime = 0;
+  setupPhase2();
+}
 
     navButtons.style.display = 'block';
     audio.currentTime = 0;
