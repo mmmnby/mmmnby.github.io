@@ -160,13 +160,17 @@
     updateTimeStatus();
     generatePhaseAnimationId = requestAnimationFrame(drawSpectrogramFrame);
 
-    if (generatePhaseAudio.ended || generatePhaseAudio.currentTime >= generatePhaseAudio.duration - 0.05) {
-      handleSpectrogramCompletion();
-      return;
+    const EPSILON = 0.05; // 50 milliseconds tolerance
+
+if (!hasFinishedSpectrogram &&
+    generatePhaseAudio.currentTime >= generatePhaseAudio.duration - EPSILON) {
+  handleSpectrogramCompletion();
+  return;
+}
       
 
       
-    }
+    
   }
 
   function handleSpectrogramCompletion() {
