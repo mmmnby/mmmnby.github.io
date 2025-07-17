@@ -184,6 +184,29 @@
     if (playbackPhaseAudio) { playbackPhaseAudio.pause(); playbackPhaseAudio = null; }
 
     playbackPhaseAudio = new Audio(URL.createObjectURL(fileInput.files[0]));
+    
+    if ('mediaSession' in navigator) {
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: fileInput.files[0]?.name || 'Audio',
+    artist: 'Spectrogram Player',
+    album: '',
+    artwork: [] // Optionally provide cover art here
+  });
+
+  navigator.mediaSession.setActionHandler('seekto', (details) => {
+    if (playbackPhaseAudio && details.fastSeek && typeof playbackPhaseAudio.fastSeek === 'function') {
+      playbackPhaseAudio.fastSeek(details.seekTime);
+    } else if (playbackPhaseAudio) {
+      playbackPhaseAudio.currentTime = details.seekTime;
+    }
+    drawPlaybackCursor();
+  });
+
+  navigator.mediaSession.setActionHandler('play', () => playbackPhaseAudio?.play());
+  navigator.mediaSession.setActionHandler('pause', () => playbackPhaseAudio?.pause());
+}
+
+    
     playbackPhaseAudio.crossOrigin = 'anonymous';
     playbackPhaseAudio.preload = 'auto';
     playbackPhaseAudio.playbackRate = 1.0;
