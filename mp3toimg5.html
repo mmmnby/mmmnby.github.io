@@ -129,7 +129,7 @@
 
   // ---- Spectrogram Drawing Loop ----
   function drawSpectrogramFrame() {
-    if (!generatePhaseAudio || generatePhaseAudio.paused || generatePhaseAudio.ended || generatePhasePaused) {
+    if (!generatePhaseAudio || generatePhaseAudio.paused || generatePhasePaused) {
       return;
     }
 
@@ -169,7 +169,7 @@
     updateTimeStatus();
     generatePhaseAnimationId = requestAnimationFrame(drawSpectrogramFrame);
 
-    if (generatePhaseAudio.currentTime >= generatePhaseAudio.duration) {
+    if (generatePhaseAudio.ended || generatePhaseAudio.currentTime >= generatePhaseAudio.duration) {
       handleSpectrogramCompletion();
       return;
     }
