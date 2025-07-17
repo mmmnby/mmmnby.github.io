@@ -125,6 +125,15 @@
   function drawSpectrogramFrame() {
     if (generatePhaseAudio.paused || generatePhasePaused) return;
 
+    if (drawXPosition >= SCREEN_WIDTH) {
+    // Ensure currentTime has progressed meaningfully
+      if (generatePhaseAudio.currentTime - rowStartTimeMarkers[rowStartTimeMarkers.length - 1] > 0.05) {
+      createSpectrogramRow();
+      }
+    }
+
+
+
     audioAnalyzer.getByteFrequencyData(audioDataArray);
     if (drawXPosition >= SCREEN_WIDTH) createSpectrogramRow();
 
@@ -160,6 +169,8 @@
     updateTimeStatus();
     generatePhaseAnimationId = requestAnimationFrame(drawSpectrogramFrame);
 
+    generatePhaseAudio.addEventListener('ended', handleSpectrogramCompletion);
+    
     if (generatePhaseAudio.ended || generatePhaseAudio.currentTime >= generatePhaseAudio.duration) {
       handleSpectrogramCompletion();
       return;
