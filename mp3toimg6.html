@@ -259,4 +259,72 @@
     const segmentsCount = Math.ceil(SCREEN_WIDTH / HIGHLIGHT_SEGMENT_WIDTH);
     notationHighlights.push(new Array(segmentsCount).fill(''));
 
-    rowsContainer.appendChild(row
+    rowsContainer.appendChild(rowDiv);
+    drawXPosition = 0;
+  }
+
+  function drawSpectrogramFrame() {
+    if (generatePhaseAudio.paused || generatePhasePaused) return;
+
+    audioAnalyzer.getByteFrequencyData(audioDataArray);
+    if (drawXPosition >= SCREEN_WIDTH) createSpectrogramRow();
+
+    const currentRow = spectrogramRows[spectrogramRows.length - 1];
+    const ctx = currentRow.ctx;
+
+    for (let i = 0; i < audioAnalyzer.frequencyBinCount; i++) {
+      const value = audioDataArray[i];
+      ctx.fillStyle = `hsl(${value * 1.5},100%,50%)`;
+      ctx.fillRect(drawXPosition, USEFUL_CANVAS_HEIGHT - i, 1, 1);
+    }
+
+    const elapsedSec = Math.floor(generatePhaseAudio.currentTime);
+    if (elapsedSec % 60 === 0) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = (elapsedSec % 900 === 0 ? 24 : 8);
+      ctx.beginPath();
+      ctx.moveTo(drawXPosition + 0.5, USEFUL_CANVAS_HEIGHT);
+      ctx.lineTo(drawXPosition + 0.5, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT);
+      ctx.stroke();
+    }
+    if (drawXPosition % PIXEL_LABEL_INTERVAL === 0) {
+      const label = formatTime(generatePhaseAudio.currentTime);
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(drawXPosition - tw / 2 - LABEL_PADDING, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT, tw + 2 * LABEL_PADDING, LABEL_AREA_HEIGHT);
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.font = '12px sans-serif';
+      ctx.fillText(label, drawXPosition, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT + 2);
+    }
+
+    drawXPosition++;
+    updateTimeStatus();
+    generatePhaseAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+
+    const EPSILON = 0.05;
+    if (!hasFinishedSpectrogram &&
+      generatePhaseAudio.currentTime >= generatePhaseAudio.duration - EPSILON) {
+      handleSpectrogramCompletion();
+      return;
+    }
+  }
+
+  function handleSpectrogramCompletion() {
+    if (hasFinishedSpectrogram) return;
+    cancelAnimationFrame(generatePhaseAnimationId);
+    finalRowWidth = drawXPosition;
+    hasFinishedSpectrogram = true;
+
+    startGenerateButton.disabled = true;
+    pauseGenerateButton.disabled = true;
+    playerControls.style.display = 'block';
+    notationControls.style.display = 'block';
+
+    setupPlaybackPhase();
+  }
+
+  // ... remainder of code (setupPlaybackPhase, drawPlaybackCursor, edit handlers, etc.) continues here ...
+</script>
+
+</body>
+</html>
