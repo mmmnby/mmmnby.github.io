@@ -10,54 +10,72 @@
     #timeStatus { margin-top: 6px; font-size: 14px; font-style: italic; }
     .canvasRowContainer { position: relative; display: inline-block; margin-bottom: 20px; }
     canvas.spectrogramCanvas { background: #000; display: block; }
-    canvas.cursorOverlayCanvas { position: absolute; left: 0; top: 0; pointer-events: auto; }
-    canvas.notationCanvas { display: block; margin-top: 2px; cursor: crosshair; }
+    canvas.cursorOverlayCanvas, canvas.notationCanvas {
+      position: absolute; left: 0; top: 0;
+      pointer-events: auto;
+    }
+    canvas.notationCanvas {
+      pointer-events: none;
+    }
     #playerControls { margin: 10px; display: none; }
-    #playerControls button, #editModeToggle, #highlightColorPicker, #eraserButton { margin: 0 6px; font-size: 16px; padding: 6px 12px; }
+    #playerControls button { margin: 0 6px; font-size: 16px; padding: 6px 12px; }
+    #notationControls { margin: 10px; display: none; }
   </style>
 </head>
 <body>
 
-  <h1>Spectrogram Player with Notation</h1>
+<h1>Spectrogram Player with Notation</h1>
 
-  <div class="controls">
-    <input type="file" id="fileInput" accept=".mp3">
-    <label>Speed:
-      <select id="playbackSpeedSelect">
-        <option>1</option><option>2</option><option>4</option>
-        <option>30</option><option>60</option><option>120</option>
-      </select> ×
-    </label>
-    <button id="startGenerateButton">Play (Phase 1)</button>
-    <button id="pauseGenerateButton" disabled>Pause</button>
-    <button id="exportButton">Download Spectrogram</button>
-    <div id="timeStatus">No file loaded.</div>
-    <div id="fileDurationStatus"></div>
-    <div id="playerControls">
-      <button id="rewind15Seconds">◀ 15 s</button>
-      <button id="playPauseButton">Play/Pause</button>
-      <button id="forward15Seconds">15 s ▶</button>
-    </div>
-    <div id="editControls" style="display:none; margin-top:10px;">
-      <button id="editModeToggle">Switch to Edit Mode</button>
-      <input type="color" id="highlightColorPicker" value="#ffff00">
-      <button id="eraserButton">Eraser</button>
-    </div>
-  </div>
+<div class="controls">
+  <input type="file" id="fileInput" accept=".mp3">
+  <label> Speed:
+    <select id="playbackSpeedSelect">
+      <option>1</option><option>2</option><option>4</option>
+      <option>30</option><option>60</option><option>120</option>
+    </select> ×
+  </label>
+  <button id="startGenerateButton">Play (Phase 1)</button>
+  <button id="pauseGenerateButton" disabled>Pause</button>
+  <button id="exportButton">Download Spectrogram</button>
+  <div id="timeStatus">No file loaded.</div>
+  <div id="fileDurationStatus"></div>
+</div>
 
-  <div id="rowsContainer"></div>
+<div id="playerControls">
+  <button id="rewind15Seconds">◀ 15 s</button>
+  <button id="playPauseButton">Play/Pause</button>
+  <button id="forward15Seconds">15 s ▶</button>
+</div>
+
+<div id="notationControls">
+  <label>
+    <input type="checkbox" id="editModeToggle">
+    Edit Notation
+  </label>
+  <label>Color:
+    <select id="notationColorSelect">
+      <option value="#ff0">Yellow</option>
+      <option value="#0f0">Green</option>
+      <option value="#0ff">Cyan</option>
+      <option value="#f00">Red</option>
+      <option value="eraser">Eraser</option>
+    </select>
+  </label>
+</div>
+
+<div id="rowsContainer"></div>
 
 <script>
-  // === Constants ===
   const SCREEN_WIDTH = window.innerWidth;
   const ROW_HEIGHT = 300;
+  const NOTATION_HEIGHT = 20;
   const MINUTE_TICK_HEIGHT = 10;
   const LABEL_AREA_HEIGHT = 20;
-  const NOTATION_TRACK_HEIGHT = 20;
-  const NOTATION_TRACK_MARGIN = 2;
-  const HIGHLIGHT_RESOLUTION = 50; // px
+  const USEFUL_CANVAS_HEIGHT = ROW_HEIGHT - MINUTE_TICK_HEIGHT - LABEL_AREA_HEIGHT - NOTATION_HEIGHT - 2;
+  const PIXEL_LABEL_INTERVAL = 100;
+  const LABEL_PADDING = 6;
+  const NOTATION_RESOLUTION = 50;
 
-  // === DOM Elements ===
   const fileInput = document.getElementById('fileInput');
   const playbackSpeedSelect = document.getElementById('playbackSpeedSelect');
   const startGenerateButton = document.getElementById('startGenerateButton');
@@ -70,40 +88,30 @@
   const rewind15Seconds = document.getElementById('rewind15Seconds');
   const playPauseButton = document.getElementById('playPauseButton');
   const forward15Seconds = document.getElementById('forward15Seconds');
-  const editControls = document.getElementById('editControls');
   const editModeToggle = document.getElementById('editModeToggle');
-  const highlightColorPicker = document.getElementById('highlightColorPicker');
-  const eraserButton = document.getElementById('eraserButton');
+  const notationColorSelect = document.getElementById('notationColorSelect');
+  const notationControls = document.getElementById('notationControls');
 
-  // === Audio / Drawing State ===
   let generatePhaseAudio = null;
   let audioAnalyzer = null;
-  let audioFrequencyData = null;
+  let audioDataArray = null;
   let drawXPosition = 0;
-  let finalRowDrawWidth = 0;
-  let spectrogramCompleted = false;
-  let spectrogramAnimationId = null;
-  let audioContext = null;
+  let finalRowWidth = 0;
+  let hasFinishedSpectrogram = false;
+  let generatePhasePaused = false;
+  let generatePhaseAnimationId = null;
+  let audioCtx = null;
 
-  // Phase arrays
   const spectrogramRows = [];
   const cursorOverlayRows = [];
-  const notationContextRows = [];
+  const notationRows = [];
   const rowStartTimeMarkers = [];
 
-  // Playback
   let playbackPhaseAudio = null;
-  let isPlayingBack = false;
+  let playbackPhasePlaying = false;
 
-  // Edit Mode
-  let isEditMode = false;
-  let currentHighlightColor = highlightColorPicker.value;
-  
-  // === Helpers ===
-  function formatTime(seconds) {
-    const h = Math.floor(seconds/3600);
-    const m = Math.floor((seconds%3600)/60);
-    const s = Math.floor(seconds%60);
+  function formatTime(t) {
+    const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = Math.floor(t%60);
     return `${h}h${m}m${s}s`;
   }
 
@@ -112,265 +120,197 @@
       timeStatus.textContent = 'No file loaded.';
       return;
     }
-    const current = generatePhaseAudio.currentTime;
-    const duration = generatePhaseAudio.duration || 0;
-    timeStatus.textContent = (spectrogramCompleted
-      ? `Playback: ${formatTime(current)} / ${formatTime(duration)}`
-      : `Processing: ${formatTime(current)} / ${formatTime(duration)}`);
+    const cur = generatePhaseAudio.currentTime, dur = generatePhaseAudio.duration || 0;
+    timeStatus.textContent = `Processing: ${formatTime(cur)} / ${formatTime(dur)}`;
   }
 
-  // === Spectrogram Row Creation ===
   function createSpectrogramRow() {
-    const containerDiv = document.createElement('div');
-    containerDiv.className = 'canvasRowContainer';
+    const rowDiv = document.createElement('div');
+    rowDiv.className='canvasRowContainer';
 
-    // Spectrogram canvas
     const spectroCanvas = document.createElement('canvas');
     spectroCanvas.width = SCREEN_WIDTH;
     spectroCanvas.height = ROW_HEIGHT;
     spectroCanvas.className = 'spectrogramCanvas';
-    const spectroContext = spectroCanvas.getContext('2d');
-    spectroContext.fillStyle = '#000';
-    spectroContext.fillRect(0, 0, SCREEN_WIDTH, ROW_HEIGHT);
-    containerDiv.appendChild(spectroCanvas);
-    spectrogramRows.push({ canvas: spectroCanvas, context: spectroContext });
+    const spectroCtx = spectroCanvas.getContext('2d');
+    spectroCtx.fillStyle = '#000';
+    spectroCtx.fillRect(0,0,SCREEN_WIDTH,ROW_HEIGHT);
+    rowDiv.appendChild(spectroCanvas);
+    spectrogramRows.push({ canvas: spectroCanvas, ctx: spectroCtx });
 
-    // Cursor overlay canvas
+    const notationCanvas = document.createElement('canvas');
+    notationCanvas.width = SCREEN_WIDTH;
+    notationCanvas.height = ROW_HEIGHT;
+    notationCanvas.className = 'notationCanvas';
+    const notationCtx = notationCanvas.getContext('2d');
+    rowDiv.appendChild(notationCanvas);
+    notationRows.push({ canvas: notationCanvas, ctx: notationCtx });
+
     const overlayCanvas = document.createElement('canvas');
     overlayCanvas.width = SCREEN_WIDTH;
     overlayCanvas.height = ROW_HEIGHT;
     overlayCanvas.className = 'cursorOverlayCanvas';
-    const overlayContext = overlayCanvas.getContext('2d');
-    containerDiv.appendChild(overlayCanvas);
-    cursorOverlayRows.push({ canvas: overlayCanvas, context: overlayContext });
+    const overlayCtx = overlayCanvas.getContext('2d');
+    rowDiv.appendChild(overlayCanvas);
+    cursorOverlayRows.push({ canvas: overlayCanvas, ctx: overlayCtx });
 
-    // Notation canvas
-    const notationCanvas = document.createElement('canvas');
-    notationCanvas.width = SCREEN_WIDTH;
-    notationCanvas.height = NOTATION_TRACK_HEIGHT;
-    notationCanvas.className = 'notationCanvas';
-    const notationContext = notationCanvas.getContext('2d');
-    // transparent background by default
-    containerDiv.appendChild(notationCanvas);
-    notationContextRows.push({ canvas: notationCanvas, context: notationContext, isDrawing: false });
-
-    // Timestamp marker
     rowStartTimeMarkers.push(generatePhaseAudio.currentTime);
-    rowsContainer.appendChild(containerDiv);
-
-    // Attach event handlers for notation editing
-    attachNotationEventHandlers(notationContextRows.length - 1);
-    
-    // Reset draw X for new row
+    rowsContainer.appendChild(rowDiv);
     drawXPosition = 0;
   }
 
-  // === Notation Event Handlers ===
-  function attachNotationEventHandlers(rowIndex) {
-    const { canvas, context } = notationContextRows[rowIndex];
-    canvas.addEventListener('mousedown', event => {
-      if (!isEditMode) return;
-      notationContextRows[rowIndex].isDrawing = true;
-      drawNotationBlock(rowIndex, event.offsetX);
-    });
-    canvas.addEventListener('mousemove', event => {
-      if (!isEditMode || !notationContextRows[rowIndex].isDrawing) return;
-      drawNotationBlock(rowIndex, event.offsetX);
-    });
-    canvas.addEventListener('mouseup', () => {
-      notationContextRows[rowIndex].isDrawing = false;
-    });
-    canvas.addEventListener('mouseleave', () => {
-      notationContextRows[rowIndex].isDrawing = false;
-    });
-  }
-
-  function drawNotationBlock(rowIndex, xPosition) {
-    const { context } = notationContextRows[rowIndex];
-    const blockStart = Math.floor(xPosition / HIGHLIGHT_RESOLUTION) * HIGHLIGHT_RESOLUTION;
-    if (currentHighlightColor === 'eraser') {
-      context.clearRect(blockStart, 0, HIGHLIGHT_RESOLUTION, NOTATION_TRACK_HEIGHT);
-    } else {
-      context.fillStyle = currentHighlightColor;
-      context.fillRect(blockStart, 0, HIGHLIGHT_RESOLUTION, NOTATION_TRACK_HEIGHT);
-    }
-  }
-
-  // === Spectrogram Drawing Loop ===
   function drawSpectrogramFrame() {
-    if (generatePhaseAudio.paused) return;
-    audioAnalyzer.getByteFrequencyData(audioFrequencyData);
+    if (generatePhaseAudio.paused || generatePhasePaused) return;
 
+    audioAnalyzer.getByteFrequencyData(audioDataArray);
     if (drawXPosition >= SCREEN_WIDTH) createSpectrogramRow();
 
-    const { context: spectroCtx } = spectrogramRows[spectrogramRows.length - 1];
-    for (let i = 0; i < audioAnalyzer.frequencyBinCount; i++) {
-      const value = audioFrequencyData[i];
-      spectroCtx.fillStyle = `hsl(${value * 1.5},100%,50%)`;
-      spectroCtx.fillRect(drawXPosition, ROW_HEIGHT - MINUTE_TICK_HEIGHT - LABEL_AREA_HEIGHT - i, 1, 1);
+    const currentRow = spectrogramRows[spectrogramRows.length - 1];
+    const ctx = currentRow.ctx;
+
+    for (let i=0; i<audioAnalyzer.frequencyBinCount; i++) {
+      const value = audioDataArray[i];
+      ctx.fillStyle = `hsl(${value*1.5},100%,50%)`;
+      ctx.fillRect(drawXPosition, USEFUL_CANVAS_HEIGHT - i, 1, 1);
     }
 
-    // Minute ticks
-    const elapsedSeconds = Math.floor(generatePhaseAudio.currentTime);
-    if (elapsedSeconds % 60 === 0) {
-      spectroCtx.strokeStyle = '#fff';
-      spectroCtx.lineWidth = (elapsedSeconds % 900 === 0 ? 24 : 8);
-      spectroCtx.beginPath();
-      spectroCtx.moveTo(drawXPosition + .5, ROW_HEIGHT - MINUTE_TICK_HEIGHT - LABEL_AREA_HEIGHT);
-      spectroCtx.lineTo(drawXPosition + .5, ROW_HEIGHT - LABEL_AREA_HEIGHT);
-      spectroCtx.stroke();
+    const elapsedSec = Math.floor(generatePhaseAudio.currentTime);
+    if (elapsedSec % 60 === 0) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = (elapsedSec%900===0?24:8);
+      ctx.beginPath();
+      ctx.moveTo(drawXPosition+0.5,USEFUL_CANVAS_HEIGHT);
+      ctx.lineTo(drawXPosition+0.5,USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT);
+      ctx.stroke();
     }
 
-    // Pixel labels every PIXEL_LABEL_INTERVAL
-    if (drawXPosition % 100 === 0) {
+    if (drawXPosition % PIXEL_LABEL_INTERVAL === 0) {
       const label = formatTime(generatePhaseAudio.currentTime);
-      const textWidth = spectroCtx.measureText(label).width;
-      const labelX = drawXPosition - textWidth / 2;
-      spectroCtx.fillStyle = '#000';
-      spectroCtx.fillRect(labelX - 6, ROW_HEIGHT - LABEL_AREA_HEIGHT, textWidth + 12, LABEL_AREA_HEIGHT);
-      spectroCtx.fillStyle = '#fff';
-      spectroCtx.textAlign = 'center';
-      spectroCtx.textBaseline = 'top';
-      spectroCtx.font = '12px sans-serif';
-      spectroCtx.fillText(label, drawXPosition, ROW_HEIGHT - LABEL_AREA_HEIGHT + 2);
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle='#000';
+      ctx.fillRect(drawXPosition-tw/2-LABEL_PADDING, USEFUL_CANVAS_HEIGHT+MINUTE_TICK_HEIGHT, tw+2*LABEL_PADDING, LABEL_AREA_HEIGHT);
+      ctx.fillStyle='#fff';
+      ctx.textAlign='center'; ctx.textBaseline='top'; ctx.font='12px sans-serif';
+      ctx.fillText(label, drawXPosition, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT + 2);
     }
 
     drawXPosition++;
     updateTimeStatus();
-    spectrogramAnimationId = requestAnimationFrame(drawSpectrogramFrame);
+    generatePhaseAnimationId = requestAnimationFrame(drawSpectrogramFrame);
 
     const EPSILON = 0.05;
-    if (!spectrogramCompleted && generatePhaseAudio.currentTime >= generatePhaseAudio.duration - EPSILON) {
+    if (!hasFinishedSpectrogram &&
+        generatePhaseAudio.currentTime >= generatePhaseAudio.duration - EPSILON) {
       handleSpectrogramCompletion();
+      return;
     }
   }
 
-  // === Completion & Phase Switch ===
   function handleSpectrogramCompletion() {
-    if (spectrogramCompleted) return;
-    cancelAnimationFrame(spectrogramAnimationId);
-    finalRowDrawWidth = drawXPosition;
-    spectrogramCompleted = true;
+    if (hasFinishedSpectrogram) return;
+    cancelAnimationFrame(generatePhaseAnimationId);
+    finalRowWidth = drawXPosition;
+    hasFinishedSpectrogram = true;
 
     startGenerateButton.disabled = true;
     pauseGenerateButton.disabled = true;
     playerControls.style.display = 'block';
-    editControls.style.display = 'block';
+    notationControls.style.display = 'block';
 
     timeStatus.textContent = 'Spectrogram complete. Ready for playback.';
     setupPlaybackPhase();
   }
 
-  // === Playback Phase Setup ===
+  function drawNotationBlock(notationCtx, x, color) {
+    if (color === 'eraser') {
+      notationCtx.clearRect(x, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT + LABEL_AREA_HEIGHT + 2, NOTATION_RESOLUTION, NOTATION_HEIGHT);
+    } else {
+      notationCtx.fillStyle = color;
+      notationCtx.fillRect(x, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT + LABEL_AREA_HEIGHT + 2, NOTATION_RESOLUTION, NOTATION_HEIGHT);
+    }
+  }
+
   function setupPlaybackPhase() {
-    if (!spectrogramCompleted) return;
+    if (!hasFinishedSpectrogram) return;
     if (playbackPhaseAudio) { playbackPhaseAudio.pause(); playbackPhaseAudio = null; }
 
     playbackPhaseAudio = new Audio(URL.createObjectURL(fileInput.files[0]));
-    playbackPhaseAudio.crossOrigin = 'anonymous';
-    playbackPhaseAudio.preload = 'auto';
-    playbackPhaseAudio.playbackRate = 1.0;
 
-    // Seek on overlayCanvas click (when not in edit mode)
-    cursorOverlayRows.forEach(({ canvas }, rowIndex) => {
-      canvas.addEventListener('click', event => {
-        if (isEditMode) return;
-        const rect = canvas.getBoundingClientRect();
-        const clickX = event.clientX - rect.left;
-        const isLastRow = rowIndex === rowStartTimeMarkers.length - 1;
-        const rowWidth = isLastRow ? finalRowDrawWidth : SCREEN_WIDTH;
-        const startTime = rowStartTimeMarkers[rowIndex];
-        const endTime = rowStartTimeMarkers[rowIndex + 1] || playbackPhaseAudio.duration;
-        const seekTime = startTime + (clickX / rowWidth) * (endTime - startTime);
-        playbackPhaseAudio.currentTime = seekTime;
-        playbackPhaseAudio.play();
-        drawPlaybackCursor();
+    cursorOverlayRows.forEach(({ canvas }, idx) => {
+      canvas.style.pointerEvents = 'auto';
+      let isDragging = false;
+
+      canvas.addEventListener('mousedown', e => {
+        if (!playbackPhaseAudio) return;
+        isDragging = true;
+        handleCanvasInteraction(e, idx);
       });
+      canvas.addEventListener('mousemove', e => {
+        if (isDragging && editModeToggle.checked) handleCanvasInteraction(e, idx);
+      });
+      document.addEventListener('mouseup', () => { isDragging = false; });
     });
 
-    playbackPhaseAudio.addEventListener('timeupdate', () => {
-      updateTimeStatus();
+    playbackPhaseAudio.addEventListener('timeupdate', drawPlaybackCursor);
+
+    playbackPhaseAudio.addEventListener('play', () => { playbackPhasePlaying = true; playPauseButton.textContent = 'Pause'; });
+    playbackPhaseAudio.addEventListener('pause', () => { playbackPhasePlaying = false; playPauseButton.textContent = 'Play'; });
+    playbackPhaseAudio.addEventListener('ended', () => { playbackPhasePlaying = false; playPauseButton.textContent = 'Play'; });
+
+    drawPlaybackCursor();
+  }
+
+  function handleCanvasInteraction(e, rowIndex) {
+    const canvas = cursorOverlayRows[rowIndex].canvas;
+    const rect = canvas.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const isLastRow = rowIndex === rowStartTimeMarkers.length - 1;
+    const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
+    const t0 = rowStartTimeMarkers[rowIndex];
+    const t1 = rowStartTimeMarkers[rowIndex+1] || playbackPhaseAudio.duration;
+
+    if (editModeToggle.checked) {
+      const x = Math.floor(clickX / NOTATION_RESOLUTION) * NOTATION_RESOLUTION;
+      const color = notationColorSelect.value;
+      const notationCtx = notationRows[rowIndex].ctx;
+      drawNotationBlock(notationCtx, x, color);
+    } else {
+      const seekTime = t0 + clickX / rowWidth * (t1 - t0);
+      playbackPhaseAudio.currentTime = seekTime;
+      playbackPhaseAudio.play().catch(() => {
+        playbackPhaseAudio.load();
+        playbackPhaseAudio.play();
+      });
       drawPlaybackCursor();
-    });
+    }
   }
 
   function drawPlaybackCursor() {
     if (!playbackPhaseAudio) return;
-    const currentTime = playbackPhaseAudio.currentTime;
+    const t = playbackPhaseAudio.currentTime;
 
-    cursorOverlayRows.forEach(({ canvas, context }, rowIndex) => {
-      context.clearRect(0, 0, SCREEN_WIDTH, ROW_HEIGHT);
-      const startTime = rowStartTimeMarkers[rowIndex];
-      const endTime = rowStartTimeMarkers[rowIndex + 1] || playbackPhaseAudio.duration;
-      if (currentTime < startTime || currentTime > endTime) return;
-      const isLastRow = rowIndex === rowStartTimeMarkers.length - 1;
-      const rowWidth = isLastRow ? finalRowDrawWidth : SCREEN_WIDTH;
-      const xPos = ((currentTime - startTime) / (endTime - startTime)) * rowWidth;
+    cursorOverlayRows.forEach(({ canvas, ctx }, idx) => {
+      ctx.clearRect(0, 0, SCREEN_WIDTH, ROW_HEIGHT);
+      const t0 = rowStartTimeMarkers[idx];
+      const t1 = rowStartTimeMarkers[idx+1] || playbackPhaseAudio.duration;
+      if (t < t0 || t > t1) return;
 
-      // Draw red-white-black cursor
-      context.lineWidth = 5; context.strokeStyle = 'red';
-      context.beginPath(); context.moveTo(xPos + .5, 0); context.lineTo(xPos + .5, ROW_HEIGHT); context.stroke();
-      context.lineWidth = 3; context.strokeStyle = 'white';
-      context.beginPath(); context.moveTo(xPos + .5, 0); context.lineTo(xPos + .5, ROW_HEIGHT); context.stroke();
-      context.lineWidth = 1; context.strokeStyle = 'black';
-      context.beginPath(); context.moveTo(xPos + .5, 0); context.lineTo(xPos + .5, ROW_HEIGHT); context.stroke();
+      const isLastRow = idx === rowStartTimeMarkers.length - 1;
+      const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
+      const x = (t - t0) / (t1 - t0) * rowWidth;
+
+      ctx.lineWidth = 5; ctx.strokeStyle = 'red';
+      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, ROW_HEIGHT); ctx.stroke();
+
+      ctx.lineWidth = 3; ctx.strokeStyle = 'white';
+      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, ROW_HEIGHT); ctx.stroke();
+
+      ctx.lineWidth = 1; ctx.strokeStyle = 'black';
+      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, ROW_HEIGHT); ctx.stroke();
     });
+
+    timeStatus.textContent = `Playback: ${formatTime(t)} / ${formatTime(playbackPhaseAudio.duration)}`;
   }
-
-  // === Control Event Listeners ===
-  startGenerateButton.addEventListener('click', () => {
-    if (!fileInput.files[0]) return alert('Choose an MP3 file.');
-    if (audioContext) { audioContext.close(); audioContext = null; }
-    audioContext = new AudioContext();
-
-    generatePhaseAudio = new Audio(URL.createObjectURL(fileInput.files[0]));
-    generatePhaseAudio.crossOrigin = 'anonymous';
-    generatePhaseAudio.playbackRate = parseFloat(playbackSpeedSelect.value);
-
-    audioAnalyzer = audioContext.createAnalyser();
-    const sourceNode = audioContext.createMediaElementSource(generatePhaseAudio);
-    sourceNode.connect(audioAnalyzer);
-    audioAnalyzer.connect(audioContext.destination);
-    audioFrequencyData = new Uint8Array(audioAnalyzer.frequencyBinCount);
-
-    drawXPosition = 0;
-    spectrogramCompleted = false;
-    finalRowDrawWidth = 0;
-    rowsContainer.innerHTML = '';
-    spectrogramRows.length = 0;
-    cursorOverlayRows.length = 0;
-    notationContextRows.length = 0;
-    rowStartTimeMarkers.length = 0;
-
-    createSpectrogramRow();
-    generatePhaseAudio.play();
-    pauseGenerateButton.disabled = false;
-    drawSpectrogramFrame();
-  });
-
-  pauseGenerateButton.addEventListener('click', () => {
-    if (!generatePhaseAudio) return;
-    if (generatePhaseAudio.paused) {
-      generatePhaseAudio.play();
-      drawSpectrogramFrame();
-    } else {
-      generatePhaseAudio.pause();
-      cancelAnimationFrame(spectrogramAnimationId);
-    }
-  });
-
-  fileInput.addEventListener('change', () => {
-    if (!fileInput.files[0]) {
-      timeStatus.textContent = 'No file loaded.';
-      fileDurationStatus.textContent = '';
-      return;
-    }
-    const probeAudio = document.createElement('audio');
-    probeAudio.src = URL.createObjectURL(fileInput.files[0]);
-    probeAudio.addEventListener('loadedmetadata', () => {
-      fileDurationStatus.textContent = 'Total Duration: ' + formatTime(probeAudio.duration);
-    });
-  });
 
   rewind15Seconds.addEventListener('click', () => {
     if (!playbackPhaseAudio) return;
@@ -386,40 +326,80 @@
 
   playPauseButton.addEventListener('click', () => {
     if (!playbackPhaseAudio) return;
-    isPlayingBack ? playbackPhaseAudio.pause() : playbackPhaseAudio.play();
+    playbackPhasePlaying ? playbackPhaseAudio.pause() : playbackPhaseAudio.play().catch(() => {
+      playbackPhaseAudio.load();
+      playbackPhaseAudio.play();
+    });
+  });
+
+  startGenerateButton.addEventListener('click', () => {
+    if (!fileInput.files[0]) return alert('Choose an MP3 file.');
+    if (generatePhaseAudio) { generatePhaseAudio.pause(); generatePhaseAudio = null; }
+
+    if (audioCtx) {
+      audioCtx.close();
+      audioCtx = null;
+    }
+    audioCtx = new AudioContext();
+
+    generatePhaseAudio = new Audio(URL.createObjectURL(fileInput.files[0]));
+    generatePhaseAudio.crossOrigin = 'anonymous';
+    generatePhaseAudio.playbackRate = parseFloat(playbackSpeedSelect.value);
+
+    audioAnalyzer = audioCtx.createAnalyser();
+    const srcNode = audioCtx.createMediaElementSource(generatePhaseAudio);
+    srcNode.connect(audioAnalyzer);
+    audioAnalyzer.connect(audioCtx.destination);
+    audioDataArray = new Uint8Array(audioAnalyzer.frequencyBinCount);
+
+    drawXPosition = 0;
+    hasFinishedSpectrogram = false;
+    finalRowWidth = 0;
+    generatePhasePaused = false;
+
+    rowsContainer.innerHTML = '';
+    spectrogramRows.length = 0;
+    cursorOverlayRows.length = 0;
+    notationRows.length = 0;
+    rowStartTimeMarkers.length = 0;
+
+    createSpectrogramRow();
+    generatePhaseAudio.play().catch(console.error);
+    pauseGenerateButton.disabled = false;
+
+    drawSpectrogramFrame();
+  });
+
+  pauseGenerateButton.addEventListener('click', () => {
+    if (!generatePhaseAudio) return;
+    if (generatePhasePaused) {
+      generatePhaseAudio.play();
+      generatePhasePaused = false;
+      drawSpectrogramFrame();
+    } else {
+      generatePhaseAudio.pause();
+      generatePhasePaused = true;
+      cancelAnimationFrame(generatePhaseAnimationId);
+    }
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (!fileInput.files[0]) {
+      timeStatus.textContent = 'No file loaded.';
+      fileDurationStatus.textContent = '';
+      return;
+    }
+    const tempAudio = document.createElement('audio');
+    tempAudio.src = URL.createObjectURL(fileInput.files[0]);
+    tempAudio.addEventListener('loadedmetadata', () => {
+      fileDurationStatus.textContent = 'Total Duration: ' + formatTime(tempAudio.duration);
+    });
   });
 
   exportButton.addEventListener('click', () => {
-    // Merge all spectrogram rows into one canvas
-    const exportCanvas = document.createElement('canvas');
-    exportCanvas.width = SCREEN_WIDTH;
-    exportCanvas.height = spectrogramRows.length * ROW_HEIGHT;
-    const exportContext = exportCanvas.getContext('2d');
-    spectrogramRows.forEach(({ canvas }, idx) => {
-      exportContext.drawImage(canvas, 0, idx * ROW_HEIGHT);
-    });
-    const link = document.createElement('a');
-    link.download = 'spectrogram.png';
-    link.href = exportCanvas.toDataURL();
-    link.click();
-  });
-
-  // === Edit Mode Controls ===
-  editModeToggle.addEventListener('click', () => {
-    isEditMode = !isEditMode;
-    editModeToggle.textContent = isEditMode ? 'Switch to Seek Mode' : 'Switch to Edit Mode';
-    // change cursor for overlay canvases
-    cursorOverlayRows.forEach(({ canvas }) => {
-      canvas.style.pointerEvents = isEditMode ? 'none' : 'auto';
-    });
-  });
-
-  highlightColorPicker.addEventListener('input', () => {
-    currentHighlightColor = highlightColorPicker.value;
-  });
-  eraserButton.addEventListener('click', () => {
-    currentHighlightColor = 'eraser';
+    alert('Export not implemented.');
   });
 </script>
+
 </body>
 </html>
