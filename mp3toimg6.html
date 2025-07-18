@@ -1,10 +1,8 @@
-<!-- Due to response size limits, the full annotated HTML is too large to fit in one reply. I will split the response into parts. -->
-
-<!-- Part 1: HEAD + STYLES + CONTROLS -->
+<!-- Save this as spectrogram_with_notation.html and open in a browser -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Spectrogram Player with Notation</title>
   <style>
     body { background: #111; color: #fff; font-family: sans-serif; margin: 0; text-align: center; }
@@ -12,64 +10,56 @@
     .controls > * { margin: 6px; font-size: 16px; }
     #timeStatus { margin-top: 6px; font-size: 14px; font-style: italic; }
     .canvasRowContainer { position: relative; display: inline-block; margin-bottom: 20px; }
-    canvas.spectrogramCanvas { background: #000; display: block; }
-    canvas.cursorOverlayCanvas,
-    canvas.notationCanvas {
-      position: absolute; left: 0; top: 0; pointer-events: none;
-    }
-    #playerControls, #notationControls { margin: 10px; display: none; }
-    #playerControls button, #notationControls button { margin: 0 6px; font-size: 16px; padding: 6px 12px; }
-    #notationControls label { margin-right: 10px; }
+    canvas.spectrogramCanvas { background: #000; display: block; z-index: 1; }
+    canvas.cursorOverlayCanvas { position: absolute; left: 0; top: 0; pointer-events: auto; z-index: 3; }
+    canvas.notationCanvas { position: absolute; left: 0; top: auto; bottom: 0; pointer-events: auto; z-index: 2; }
+    #playerControls { margin: 10px; display: none; }
+    #playerControls button { margin: 0 6px; font-size: 16px; padding: 6px 12px; }
+    .editorPanel { margin: 10px; display: none; }
+    .colorSwatch { width: 24px; height: 24px; display: inline-block; margin: 0 4px; border: 2px solid #fff; cursor: pointer; }
+    .colorSwatch.selected { border: 2px solid yellow; }
   </style>
 </head>
 <body>
-  <h1>Spectrogram Player with Notation</h1>
 
-  <div class="controls">
-    <input type="file" id="fileInput" accept=".mp3">
-    <label> Speed:
-      <select id="playbackSpeedSelect">
-        <option>1</option><option>2</option><option>4</option>
-        <option>30</option><option>60</option><option>120</option>
-      </select> ×
-    </label>
-    <button id="startGenerateButton">Play (Phase 1)</button>
-    <button id="pauseGenerateButton" disabled>Pause</button>
-    <button id="exportButton">Download Spectrogram</button>
-    <div id="timeStatus">No file loaded.</div>
-    <div id="fileDurationStatus"></div>
-  </div>
+<h1>Spectrogram Player + Notation</h1>
 
-  <div id="playerControls">
-    <button id="rewind15Seconds">◀ 15 s</button>
-    <button id="playPauseButton">Play/Pause</button>
-    <button id="forward15Seconds">15 s ▶</button>
-  </div>
+<div class="controls">
+  <input type="file" id="fileInput" accept=".mp3">
+  <label> Speed:
+    <select id="playbackSpeedSelect">
+      <option>1</option><option>2</option><option>4</option>
+      <option>30</option><option>60</option><option>120</option>
+    </select> ×
+  </label>
+  <button id="startGenerateButton">Play (Phase 1)</button>
+  <button id="pauseGenerateButton" disabled>Pause</button>
+  <button id="exportButton">Download Spectrogram</button>
+  <div id="timeStatus">No file loaded.</div>
+  <div id="fileDurationStatus"></div>
+</div>
 
-  <div id="notationControls">
-    <label><input type="radio" name="mode" value="seek" checked> Seek Mode</label>
-    <label><input type="radio" name="mode" value="edit"> Edit Mode</label>
-    <label>Color:
-      <select id="colorPicker">
-        <option value="red">Red</option>
-        <option value="green">Green</option>
-        <option value="blue">Blue</option>
-        <option value="yellow">Yellow</option>
-        <option value="white">Eraser</option>
-      </select>
-    </label>
-  </div>
+<div id="playerControls">
+  <button id="rewind15Seconds">◀ 15 s</button>
+  <button id="playPauseButton">Play/Pause</button>
+  <button id="forward15Seconds">15 s ▶</button>
+  <button id="toggleEditMode">Enter Edit Mode</button>
+</div>
 
-  <div id="rowsContainer"></div>
+<div class="editorPanel" id="editorPanel">
+  <span>Select color:</span>
+  <div id="colorPalette"></div>
+</div>
 
-<!-- Continue to script section in next message -->
+<div id="rowsContainer"></div>
+
 <script>
 const SCREEN_WIDTH = window.innerWidth;
 const ROW_HEIGHT = 300;
-const NOTATION_HEIGHT = 20;
+const NOTATION_HEIGHT = 10;
 const MINUTE_TICK_HEIGHT = 10;
 const LABEL_AREA_HEIGHT = 20;
-const USEFUL_CANVAS_HEIGHT = ROW_HEIGHT - NOTATION_HEIGHT - MINUTE_TICK_HEIGHT - LABEL_AREA_HEIGHT;
+const USEFUL_CANVAS_HEIGHT = ROW_HEIGHT - MINUTE_TICK_HEIGHT - LABEL_AREA_HEIGHT - NOTATION_HEIGHT;
 const PIXEL_LABEL_INTERVAL = 100;
 const LABEL_PADDING = 6;
 
@@ -85,10 +75,14 @@ const playerControls = document.getElementById('playerControls');
 const rewind15Seconds = document.getElementById('rewind15Seconds');
 const playPauseButton = document.getElementById('playPauseButton');
 const forward15Seconds = document.getElementById('forward15Seconds');
+const toggleEditMode = document.getElementById('toggleEditMode');
+const editorPanel = document.getElementById('editorPanel');
+const colorPalette = document.getElementById('colorPalette');
 
-const notationControls = document.getElementById('notationControls');
-const colorPicker = document.getElementById('colorPicker');
-const modeRadios = document.getElementsByName('mode');
+const COLORS = ['red', 'green', 'blue', 'yellow', 'cyan', 'magenta', 'black'];
+let currentColor = 'red';
+let isEditing = false;
+let isDrawing = false;
 
 let generatePhaseAudio = null;
 let audioAnalyzer = null;
@@ -102,13 +96,12 @@ let audioCtx = null;
 
 const spectrogramRows = [];
 const cursorOverlayRows = [];
-const rowStartTimeMarkers = [];
 const notationRows = [];
+const rowStartTimeMarkers = [];
 
 let playbackPhaseAudio = null;
 let playbackPhasePlaying = false;
 
-// Utility
 function formatTime(t) {
   const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = Math.floor(t%60);
   return `${h}h${m}m${s}s`;
@@ -141,9 +134,9 @@ function createSpectrogramRow() {
   notationCanvas.width = SCREEN_WIDTH;
   notationCanvas.height = ROW_HEIGHT;
   notationCanvas.className = 'notationCanvas';
-  notationCanvas.style.pointerEvents = 'auto';
-  const notationCtx = notationCanvas.getContext('2d');
+  notationCanvas.style.top = `${USEFUL_CANVAS_HEIGHT}px`;
   rowDiv.appendChild(notationCanvas);
+  const notationCtx = notationCanvas.getContext('2d');
   notationRows.push({ canvas: notationCanvas, ctx: notationCtx });
 
   const overlayCanvas = document.createElement('canvas');
@@ -183,6 +176,7 @@ function drawSpectrogramFrame() {
     ctx.lineTo(drawXPosition+0.5,USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT);
     ctx.stroke();
   }
+
   if (drawXPosition % PIXEL_LABEL_INTERVAL === 0) {
     const label = formatTime(generatePhaseAudio.currentTime);
     const tw = ctx.measureText(label).width;
@@ -198,8 +192,7 @@ function drawSpectrogramFrame() {
   generatePhaseAnimationId = requestAnimationFrame(drawSpectrogramFrame);
 
   const EPSILON = 0.05;
-  if (!hasFinishedSpectrogram &&
-      generatePhaseAudio.currentTime >= generatePhaseAudio.duration - EPSILON) {
+  if (!hasFinishedSpectrogram && generatePhaseAudio.currentTime >= generatePhaseAudio.duration - EPSILON) {
     handleSpectrogramCompletion();
     return;
   }
@@ -214,66 +207,30 @@ function handleSpectrogramCompletion() {
   startGenerateButton.disabled = true;
   pauseGenerateButton.disabled = true;
   playerControls.style.display = 'block';
-  notationControls.style.display = 'block';
 
   timeStatus.textContent = 'Spectrogram complete. Ready for playback.';
-
   setupPlaybackPhase();
 }
 
-  function setupPlaybackPhase() {
+function setupPlaybackPhase() {
   if (!hasFinishedSpectrogram) return;
   if (playbackPhaseAudio) { playbackPhaseAudio.pause(); playbackPhaseAudio = null; }
 
   playbackPhaseAudio = new Audio(URL.createObjectURL(fileInput.files[0]));
-
   playbackPhaseAudio.crossOrigin = 'anonymous';
   playbackPhaseAudio.preload = 'auto';
   playbackPhaseAudio.playbackRate = 1.0;
-  playbackPhasePlaying = false;
 
-  // Bind click/drag listeners
-  notationRows.forEach(({ canvas, ctx }, idx) => {
-    let isDrawing = false;
+  cursorOverlayRows.forEach(({ canvas }, idx) => {
+    canvas.addEventListener('mousedown', e => handleEditOrSeek(e, idx));
+    canvas.addEventListener('mousemove', e => { if (isDrawing) handleEditOrSeek(e, idx); });
+    canvas.addEventListener('mouseup', () => isDrawing = false);
+    canvas.addEventListener('mouseleave', () => isDrawing = false);
 
-    canvas.addEventListener('mousedown', e => {
-      if (getMode() !== 'edit') return;
-      isDrawing = true;
-      drawAt(e, canvas, ctx, idx);
-    });
-
-    canvas.addEventListener('mousemove', e => {
-      if (getMode() !== 'edit' || !isDrawing) return;
-      drawAt(e, canvas, ctx, idx);
-    });
-
-    canvas.addEventListener('mouseup', () => { isDrawing = false; });
-    canvas.addEventListener('mouseleave', () => { isDrawing = false; });
-
-    canvas.addEventListener('click', e => {
-      if (getMode() !== 'seek') return;
-      if (!playbackPhaseAudio) return;
-      const rect = canvas.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-
-      const isLastRow = idx === rowStartTimeMarkers.length - 1;
-      const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
-
-      const t0 = rowStartTimeMarkers[idx];
-      const t1 = rowStartTimeMarkers[idx+1] || playbackPhaseAudio.duration;
-      const seekTime = t0 + clickX / rowWidth * (t1 - t0);
-
-      playbackPhaseAudio.currentTime = seekTime;
-      playbackPhaseAudio.play().catch(() => {
-        playbackPhaseAudio.load();
-        playbackPhaseAudio.play();
-      });
-      drawPlaybackCursor();
-    });
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); handleEditOrSeek(e.touches[0], idx); isDrawing = true; });
+    canvas.addEventListener('touchmove', e => { e.preventDefault(); if (isDrawing) handleEditOrSeek(e.touches[0], idx); });
+    canvas.addEventListener('touchend', () => isDrawing = false);
   });
-
-  playerControls.style.display = 'block';
-  notationControls.style.display = 'block';
 
   playbackPhaseAudio.addEventListener('play', () => { playbackPhasePlaying = true; playPauseButton.textContent = 'Pause'; });
   playbackPhaseAudio.addEventListener('pause', () => { playbackPhasePlaying = false; playPauseButton.textContent = 'Play'; });
@@ -282,6 +239,30 @@ function handleSpectrogramCompletion() {
     timeStatus.textContent = `Playback: ${formatTime(playbackPhaseAudio.currentTime)} / ${formatTime(playbackPhaseAudio.duration)}`;
     drawPlaybackCursor();
   });
+}
+
+function handleEditOrSeek(event, rowIndex) {
+  const canvas = cursorOverlayRows[rowIndex].canvas;
+  const rect = canvas.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+
+  if (isEditing) {
+    isDrawing = true;
+    const ctx = notationRows[rowIndex].ctx;
+    const col = Math.floor(x / 50) * 50;
+    ctx.fillStyle = currentColor === 'black' ? '#000' : currentColor;
+    ctx.fillRect(col, USEFUL_CANVAS_HEIGHT, 50, NOTATION_HEIGHT);
+  } else {
+    const t0 = rowStartTimeMarkers[rowIndex];
+    const t1 = rowStartTimeMarkers[rowIndex+1] || playbackPhaseAudio.duration;
+    const rowWidth = (rowIndex === rowStartTimeMarkers.length - 1) ? finalRowWidth : SCREEN_WIDTH;
+    const seekTime = t0 + x / rowWidth * (t1 - t0);
+    playbackPhaseAudio.currentTime = seekTime;
+    playbackPhaseAudio.play().catch(() => {
+      playbackPhaseAudio.load();
+      playbackPhaseAudio.play();
+    });
+  }
 }
 
 function drawPlaybackCursor() {
@@ -298,7 +279,6 @@ function drawPlaybackCursor() {
 
     const isLastRow = idx === rowStartTimeMarkers.length - 1;
     const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
-
     const x = (t - t0) / (t1 - t0) * rowWidth;
 
     ctx.lineWidth = 5; ctx.strokeStyle = 'red';
@@ -332,22 +312,12 @@ playPauseButton.addEventListener('click', () => {
   });
 });
 
-// Utilities
-function getMode() {
-  for (const r of modeRadios) if (r.checked) return r.value;
-  return 'seek';
-}
+toggleEditMode.addEventListener('click', () => {
+  isEditing = !isEditing;
+  toggleEditMode.textContent = isEditing ? 'Exit Edit Mode' : 'Enter Edit Mode';
+  editorPanel.style.display = isEditing ? 'block' : 'none';
+});
 
-function drawAt(e, canvas, ctx, idx) {
-  const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const color = colorPicker.value;
-
-  ctx.fillStyle = color;
-  ctx.fillRect(x - 3, 0, 6, NOTATION_HEIGHT);
-}
-
-// UI Setup
 startGenerateButton.addEventListener('click', () => {
   if (!fileInput.files[0]) return alert('Choose an MP3 file.');
   if (generatePhaseAudio) { generatePhaseAudio.pause(); generatePhaseAudio = null; }
@@ -376,8 +346,8 @@ startGenerateButton.addEventListener('click', () => {
   rowsContainer.innerHTML = '';
   spectrogramRows.length = 0;
   cursorOverlayRows.length = 0;
-  rowStartTimeMarkers.length = 0;
   notationRows.length = 0;
+  rowStartTimeMarkers.length = 0;
 
   createSpectrogramRow();
   generatePhaseAudio.play().catch(console.error);
@@ -414,6 +384,20 @@ fileInput.addEventListener('change', () => {
 
 exportButton.addEventListener('click', () => {
   alert('Export not implemented.');
+});
+
+// Build color palette
+COLORS.forEach(color => {
+  const swatch = document.createElement('div');
+  swatch.className = 'colorSwatch';
+  swatch.style.background = color;
+  if (color === currentColor) swatch.classList.add('selected');
+  swatch.addEventListener('click', () => {
+    document.querySelectorAll('.colorSwatch').forEach(el => el.classList.remove('selected'));
+    swatch.classList.add('selected');
+    currentColor = color;
+  });
+  colorPalette.appendChild(swatch);
 });
 </script>
 </body>
