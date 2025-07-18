@@ -8,18 +8,13 @@
     .controls { padding: 10px; }
     .controls > * { margin: 6px; font-size: 16px; }
     #timeStatus { margin-top: 6px; font-size: 14px; font-style: italic; }
-    .canvasRowContainer { position: relative; display: inline-block; margin-bottom: 30px; }
+    .canvasRowContainer { position: relative; display: inline-block; margin-bottom: 20px; }
     canvas.spectrogramCanvas { background: #000; display: block; }
     canvas.cursorOverlayCanvas,
-    canvas.annotationOverlayCanvas {
-      position: absolute; left: 0; top: 0;
-      pointer-events: auto;
-    }
+    canvas.annotationCanvas { position: absolute; left: 0; top: 0; pointer-events: auto; }
     #playerControls { margin: 10px; display: none; }
     #playerControls button { margin: 0 6px; font-size: 16px; padding: 6px 12px; }
-
-    #modeToggleContainer { margin-top: 10px; }
-    #annotationColorPicker { margin-left: 10px; }
+    .annotationTools { margin-top: 10px; display: none; }
   </style>
 </head>
 <body>
@@ -45,19 +40,18 @@
     <button id="rewind15Seconds">◀ 15 s</button>
     <button id="playPauseButton">Play/Pause</button>
     <button id="forward15Seconds">15 s ▶</button>
+    <button id="toggleEditModeButton">Switch to Edit Mode</button>
+  </div>
 
-    <div id="modeToggleContainer">
-      <label>
-        <input type="checkbox" id="editModeToggle"> Edit Annotations
-      </label>
-      <select id="annotationColorPicker">
-        <option value="#00ff00">Green</option>
-        <option value="#ff0000">Red</option>
-        <option value="#0000ff">Blue</option>
-        <option value="#ffff00">Yellow</option>
-        <option value="#000000">Eraser</option>
-      </select>
-    </div>
+  <div class="annotationTools" id="annotationTools">
+    <label for="colorPicker">Color: </label>
+    <select id="colorPicker">
+      <option value="#00f">Blue</option>
+      <option value="#0f0">Green</option>
+      <option value="#f00">Red</option>
+      <option value="#ff0">Yellow</option>
+      <option value="transparent">Eraser</option>
+    </select>
   </div>
 
   <div id="rowsContainer"></div>
@@ -68,7 +62,7 @@
     const MINUTE_TICK_HEIGHT = 10;
     const LABEL_AREA_HEIGHT = 20;
     const ANNOTATION_HEIGHT = 20;
-    const USEFUL_CANVAS_HEIGHT = ROW_HEIGHT - MINUTE_TICK_HEIGHT - LABEL_AREA_HEIGHT - ANNOTATION_HEIGHT;
+    const USEFUL_CANVAS_HEIGHT = ROW_HEIGHT - MINUTE_TICK_HEIGHT - LABEL_AREA_HEIGHT - ANNOTATION_HEIGHT - 2;
     const PIXEL_LABEL_INTERVAL = 100;
     const LABEL_PADDING = 6;
 
@@ -84,8 +78,9 @@
     const rewind15Seconds = document.getElementById('rewind15Seconds');
     const playPauseButton = document.getElementById('playPauseButton');
     const forward15Seconds = document.getElementById('forward15Seconds');
-    const editModeToggle = document.getElementById('editModeToggle');
-    const annotationColorPicker = document.getElementById('annotationColorPicker');
+    const toggleEditModeButton = document.getElementById('toggleEditModeButton');
+    const annotationTools = document.getElementById('annotationTools');
+    const colorPicker = document.getElementById('colorPicker');
 
     let generatePhaseAudio = null;
     let audioAnalyzer = null;
@@ -99,14 +94,17 @@
 
     const spectrogramRows = [];
     const cursorOverlayRows = [];
-    const annotationOverlayRows = [];
     const rowStartTimeMarkers = [];
+    const annotationRows = [];
 
     let playbackPhaseAudio = null;
     let playbackPhasePlaying = false;
 
+    let editMode = false;
+    let isMouseDown = false;
+
     function formatTime(t) {
-      const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = Math.floor(t % 60);
+      const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = Math.floor(t%60);
       return `${h}h${m}m${s}s`;
     }
 
@@ -144,12 +142,12 @@
       const annotationCanvas = document.createElement('canvas');
       annotationCanvas.width = SCREEN_WIDTH;
       annotationCanvas.height = ROW_HEIGHT;
-      annotationCanvas.className = 'annotationOverlayCanvas';
+      annotationCanvas.className = 'annotationCanvas';
       const annotationCtx = annotationCanvas.getContext('2d');
       rowDiv.appendChild(annotationCanvas);
-      annotationOverlayRows.push({ canvas: annotationCanvas, ctx: annotationCtx });
+      annotationRows.push({ canvas: annotationCanvas, ctx: annotationCtx });
 
-      setupAnnotationEvents(annotationCanvas, annotationCtx, annotationOverlayRows.length - 1);
+      setupAnnotationEvents(annotationCanvas, annotationCtx, annotationRows.length - 1);
 
       rowStartTimeMarkers.push(generatePhaseAudio.currentTime);
       rowsContainer.appendChild(rowDiv);
@@ -157,28 +155,29 @@
     }
 
     function setupAnnotationEvents(canvas, ctx, rowIndex) {
-      let isDrawing = false;
-
-      function drawAt(x) {
-        const col = Math.floor(x / 50) * 50;
-        ctx.fillStyle = annotationColorPicker.value;
-        ctx.fillRect(col, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT + LABEL_AREA_HEIGHT + 2, 50, ANNOTATION_HEIGHT);
-      }
-
       canvas.addEventListener('mousedown', e => {
-        if (!editModeToggle.checked) return;
-        isDrawing = true;
-        const rect = canvas.getBoundingClientRect();
-        drawAt(e.clientX - rect.left);
+        if (!editMode) return;
+        isMouseDown = true;
+        handleAnnotationInteraction(e, ctx);
       });
-
       canvas.addEventListener('mousemove', e => {
-        if (!editModeToggle.checked || !isDrawing) return;
-        const rect = canvas.getBoundingClientRect();
-        drawAt(e.clientX - rect.left);
+        if (!editMode || !isMouseDown) return;
+        handleAnnotationInteraction(e, ctx);
       });
+      canvas.addEventListener('mouseup', () => isMouseDown = false);
+      canvas.addEventListener('mouseleave', () => isMouseDown = false);
+    }
 
-      window.addEventListener('mouseup', () => isDrawing = false);
+    function handleAnnotationInteraction(e, ctx) {
+      const rect = e.target.getBoundingClientRect();
+      const x = Math.floor((e.clientX - rect.left) / 50) * 50;
+      const color = colorPicker.value;
+
+      ctx.clearRect(x, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT + LABEL_AREA_HEIGHT + 2, 50, ANNOTATION_HEIGHT);
+      if (color !== 'transparent') {
+        ctx.fillStyle = color;
+        ctx.fillRect(x, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT + LABEL_AREA_HEIGHT + 2, 50, ANNOTATION_HEIGHT);
+      }
     }
 
     function drawSpectrogramFrame() {
@@ -205,13 +204,16 @@
         ctx.lineTo(drawXPosition + 0.5, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT);
         ctx.stroke();
       }
+
       if (drawXPosition % PIXEL_LABEL_INTERVAL === 0) {
         const label = formatTime(generatePhaseAudio.currentTime);
         const tw = ctx.measureText(label).width;
         ctx.fillStyle = '#000';
         ctx.fillRect(drawXPosition - tw / 2 - LABEL_PADDING, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT, tw + 2 * LABEL_PADDING, LABEL_AREA_HEIGHT);
         ctx.fillStyle = '#fff';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.font = '12px sans-serif';
         ctx.fillText(label, drawXPosition, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT + 2);
       }
 
@@ -220,7 +222,8 @@
       generatePhaseAnimationId = requestAnimationFrame(drawSpectrogramFrame);
 
       const EPSILON = 0.05;
-      if (!hasFinishedSpectrogram && generatePhaseAudio.currentTime >= generatePhaseAudio.duration - EPSILON) {
+      if (!hasFinishedSpectrogram &&
+        generatePhaseAudio.currentTime >= generatePhaseAudio.duration - EPSILON) {
         handleSpectrogramCompletion();
         return;
       }
@@ -235,7 +238,7 @@
       startGenerateButton.disabled = true;
       pauseGenerateButton.disabled = true;
       playerControls.style.display = 'block';
-      timeStatus.textContent = 'Spectrogram complete. Ready for playback.';
+
       setupPlaybackPhase();
     }
 
@@ -247,11 +250,11 @@
       playbackPhaseAudio.crossOrigin = 'anonymous';
       playbackPhaseAudio.preload = 'auto';
       playbackPhaseAudio.playbackRate = 1.0;
-      playbackPhasePlaying = false;
 
-      cursorOverlayRows.forEach(({ canvas, ctx }, idx) => {
+      cursorOverlayRows.forEach(({ canvas }, idx) => {
+        canvas.style.pointerEvents = 'auto';
         canvas.addEventListener('click', e => {
-          if (editModeToggle.checked || !playbackPhaseAudio) return;
+          if (!playbackPhaseAudio || editMode) return;
           const rect = canvas.getBoundingClientRect();
           const clickX = e.clientX - rect.left;
 
@@ -271,12 +274,19 @@
         });
       });
 
-      playbackPhaseAudio.addEventListener('play', () => { playbackPhasePlaying = true; playPauseButton.textContent = 'Pause'; });
-      playbackPhaseAudio.addEventListener('pause', () => { playbackPhasePlaying = false; playPauseButton.textContent = 'Play'; });
-      playbackPhaseAudio.addEventListener('ended', () => { playbackPhasePlaying = false; playPauseButton.textContent = 'Play'; });
       playbackPhaseAudio.addEventListener('timeupdate', () => {
         timeStatus.textContent = `Playback: ${formatTime(playbackPhaseAudio.currentTime)} / ${formatTime(playbackPhaseAudio.duration)}`;
         drawPlaybackCursor();
+      });
+
+      playbackPhaseAudio.addEventListener('play', () => {
+        playbackPhasePlaying = true;
+        playPauseButton.textContent = 'Pause';
+      });
+
+      playbackPhaseAudio.addEventListener('pause', () => {
+        playbackPhasePlaying = false;
+        playPauseButton.textContent = 'Play';
       });
     }
 
@@ -294,6 +304,7 @@
 
         const isLastRow = idx === rowStartTimeMarkers.length - 1;
         const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
+
         const x = (t - t0) / (t1 - t0) * rowWidth;
 
         ctx.lineWidth = 5; ctx.strokeStyle = 'red';
@@ -321,10 +332,13 @@
 
     playPauseButton.addEventListener('click', () => {
       if (!playbackPhaseAudio) return;
-      playbackPhasePlaying ? playbackPhaseAudio.pause() : playbackPhaseAudio.play().catch(() => {
-        playbackPhaseAudio.load();
-        playbackPhaseAudio.play();
-      });
+      playbackPhasePlaying ? playbackPhaseAudio.pause() : playbackPhaseAudio.play();
+    });
+
+    toggleEditModeButton.addEventListener('click', () => {
+      editMode = !editMode;
+      toggleEditModeButton.textContent = editMode ? 'Switch to Seek Mode' : 'Switch to Edit Mode';
+      annotationTools.style.display = editMode ? 'block' : 'none';
     });
 
     startGenerateButton.addEventListener('click', () => {
@@ -355,8 +369,8 @@
       rowsContainer.innerHTML = '';
       spectrogramRows.length = 0;
       cursorOverlayRows.length = 0;
-      annotationOverlayRows.length = 0;
       rowStartTimeMarkers.length = 0;
+      annotationRows.length = 0;
 
       createSpectrogramRow();
       generatePhaseAudio.play().catch(console.error);
@@ -395,6 +409,5 @@
       alert('Export not implemented.');
     });
   </script>
-
 </body>
 </html>
