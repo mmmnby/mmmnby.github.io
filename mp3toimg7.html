@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Spectrogram Player (Complete, Fast Phase 1)</title>
+  <style>
+    body { background: #111; color: #fff; font-family: sans-serif; margin: 0; text-align: center; }
+    .controls { padding: 10px; }
+    .controls > * { margin: 6px; font-size: 16px; }
+    #timeStatus { margin-top: 6px; font-size: 14px; font-style: italic; }
+    .canvasRowContainer { position: relative; display: inline-block; margin-bottom: 20px; }
+    canvas.spectrogramCanvas { background: #000; display: block; }
+    canvas.cursorOverlayCanvas { position: absolute; left: 0; top: 0; pointer-events: auto; }
+    #playerControls { margin: 10px; display: none; }
+    #playerControls button { margin: 0 6px; font-size: 16px; padding: 6px 12px; }
+  </style>
+</head>
+<body>
+
+  <h1>Spectrogram Player (Fast Phase 1 + Phase 2)</h1>
+
+  <div class="controls">
+    <input type="file" id="fileInput" accept=".mp3">
+    <label> Speed:
+      <select id="playbackSpeedSelect">
+        <option>1</option><option>2</option><option>4</option>
+        <option>30</option><option>60</option><option>120</option>
+      </select> ×
+    </label>
+    <button id="startGenerateButton">Generate Spectrogram (Phase 1)</button>
+    <button id="pauseGenerateButton" disabled>Pause</button>
+    <button id="exportButton">Download Spectrogram</button>
+    <div id="timeStatus">No file loaded.</div>
+    <div id="fileDurationStatus"></div>
+  </div>
+
+  <div id="playerControls">
+    <button id="rewind15Seconds">◀ 15 s</button>
+    <button id="playPauseButton">Play</button>
+    <button id="forward15Seconds">15 s ▶</button>
+  </div>
+
+  <div id="rowsContainer"></div>
+
+<script>
+  // ───────────────────────────────────────────────────────────────────────────
+  // Constants for canvas layout
+  const SCREEN_WIDTH = window.innerWidth;
+  const ROW_HEIGHT = 300;
+  const MINUTE_TICK_HEIGHT = 10;
+  const LABEL_AREA_HEIGHT = 20;
+  const USEFUL_CANVAS_HEIGHT = ROW_HEIGHT - MINUTE_TICK_HEIGHT - LABEL_AREA_HEIGHT;
+  const PIXEL_LABEL_INTERVAL = 100;
+  const LABEL_PADDING = 6;
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // UI elements
+  const fileInput = document.getElementById('fileInput');
+  const playbackSpeedSelect = document.getElementById('playbackSpeedSelect');
+  const startGenerateButton = document.getElementById('startGenerateButton');
+  const pauseGenerateButton = document.getElementById('pauseGenerateButton');
+  const exportButton = document.getElementById('exportButton');
+  const timeStatus = document.getElementById('timeStatus');
+  const fileDurationStatus = document.getElementById('fileDurationStatus');
+  const rowsContainer = document.getElementById('rowsContainer');
+  const playerControls = document.getElementById('playerControls');
+  const rewind15Seconds = document.getElementById('rewind15Seconds');
+  const playPauseButton = document.getElementById('playPauseButton');
+  const forward15Seconds = document.getElementById('forward15Seconds');
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Phase 1 state
+  let drawXPosition = 0;
+  let finalRowWidth = 0;
+  let hasFinishedSpectrogram = false;
+
+  // Rows & overlays
+  const spectrogramRows = [];
+  const cursorOverlayRows = [];
+  const rowStartTimeMarkers = [];
+
+  // Phase 2 state
+  let playbackPhaseAudio = null;
+  let playbackPhasePlaying = false;
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Utility: format seconds as HhMmSs
+  function formatTime(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${hours}h${minutes}m${secs}s`;
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // PHASE 1: CHUNKED OFFLINE RENDERING
+
+  startGenerateButton.addEventListener('click', async () => {
+    const selectedFile = fileInput.files[0];
+    if (!selectedFile) return alert('Choose an MP3 file.');
+
+    // Reset UI & state
+    rowsContainer.innerHTML = '';
+    spectrogramRows.length = 0;
+    cursorOverlayRows.length = 0;
+    rowStartTimeMarkers.length = 0;
+    drawXPosition = 0;
+    finalRowWidth = 0;
+    hasFinishedSpectrogram = false;
+    timeStatus.textContent = 'Processing…';
+
+    // Create an <audio> element to get duration
+    const audioForMetadata = new Audio(URL.createObjectURL(selectedFile));
+    await new Promise(resolve => audioForMetadata.addEventListener('loadedmetadata', resolve, { once: true }));
+    const totalDuration = audioForMetadata.duration;
+
+    // Chunk parameters
+    const chunkDurationSeconds = 30;       // seconds per chunk
+    const analysisIntervalSeconds = 0.05;  // ~20 fps
+    const fftSize = 512;                   // analyser FFT size
+    const sampleRate = 44100;              // will match decodeAudioData
+
+    // Calculate number of chunks
+    const totalChunks = Math.ceil(totalDuration / chunkDurationSeconds);
+
+    // Begin processing each chunk in sequence
+    async function processChunk(chunkIndex) {
+      const chunkStartTime = chunkIndex * chunkDurationSeconds;
+      const actualChunkDuration = Math.min(chunkDurationSeconds, totalDuration - chunkStartTime);
+
+      // Compute approximate byte-range for this chunk
+      const fileSize = selectedFile.size;
+      const startByte = Math.floor((chunkStartTime / totalDuration) * fileSize);
+      const endByte = Math.min(fileSize - 1,
+        Math.floor(((chunkStartTime + actualChunkDuration) / totalDuration) * fileSize));
+
+      // Fetch only this byte-range, then decodeAudioData on it
+      const partialArrayBuffer = await fetch(URL.createObjectURL(selectedFile), {
+        headers: { 'Range': `bytes=${startByte}-${endByte}` }
+      }).then(response => response.arrayBuffer());
+
+      const offlineDecodeContext = new (window.OfflineAudioContext ||
+                                        window.webkitOfflineAudioContext)(1,
+          Math.ceil(sampleRate * actualChunkDuration),
+          sampleRate);
+
+      const decodedAudioBuffer = await offlineDecodeContext.decodeAudioData(partialArrayBuffer);
+
+      // Set up analyserNode
+      const analyserNode = offlineDecodeContext.createAnalyser();
+      analyserNode.fftSize = fftSize;
+      const frequencyBinCount = analyserNode.frequencyBinCount;
+      const frequencyDataArray = new Uint8Array(frequencyBinCount);
+
+      // Feed the decoded buffer into OfflineAudioContext
+      const sourceNode = offlineDecodeContext.createBufferSource();
+      sourceNode.buffer = decodedAudioBuffer;
+      sourceNode.connect(analyserNode);
+      analyserNode.connect(offlineDecodeContext.destination);
+      sourceNode.start();
+
+      // When rendering completes, draw the spectrogram chunk
+      offlineDecodeContext.oncomplete = () => {
+        const renderedBuffer = offlineDecodeContext._renderedBuffer || offlineDecodeContext.__finishTime; 
+        // older WebKit: offlineDecodeContext._renderedBuffer, modern: argument to oncomplete event
+      };
+
+      // Monkey-patch getByteFrequencyData to capture frames
+      const capturedFrames = [];
+      const originalGetByteFrequencyData = analyserNode.getByteFrequencyData.bind(analyserNode);
+      analyserNode.getByteFrequencyData = () => {
+        originalGetByteFrequencyData(frequencyDataArray);
+        capturedFrames.push(new Uint8Array(frequencyDataArray));
+      };
+
+      // Start rendering; the monkey-patch will fill capturedFrames
+      const renderedAudioBuffer = await offlineDecodeContext.startRendering();
+
+      // Draw this chunk to a new row
+      drawChunkRow(capturedFrames, chunkStartTime);
+
+      // Next chunk or finish
+      if (chunkIndex + 1 < totalChunks) {
+        processChunk(chunkIndex + 1);
+      } else {
+        finalizeSpectrogram();
+      }
+    }
+
+    // Kick off processing at chunk 0
+    processChunk(0);
+  });
+
+  function drawChunkRow(framesArray, chunkStartTime) {
+    // Create row containers & canvases
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'canvasRowContainer';
+
+    const spectroCanvas = document.createElement('canvas');
+    spectroCanvas.width = SCREEN_WIDTH;
+    spectroCanvas.height = ROW_HEIGHT;
+    spectroCanvas.className = 'spectrogramCanvas';
+    const spectroCtx = spectroCanvas.getContext('2d');
+    spectroCtx.fillStyle = '#000';
+    spectroCtx.fillRect(0, 0, SCREEN_WIDTH, ROW_HEIGHT);
+    rowDiv.appendChild(spectroCanvas);
+
+    const overlayCanvas = document.createElement('canvas');
+    overlayCanvas.width = SCREEN_WIDTH;
+    overlayCanvas.height = ROW_HEIGHT;
+    overlayCanvas.className = 'cursorOverlayCanvas';
+    const overlayCtx = overlayCanvas.getContext('2d');
+    rowDiv.appendChild(overlayCanvas);
+
+    // Remember start time of this row
+    rowStartTimeMarkers.push(chunkStartTime);
+
+    // Draw each frame in this row
+    let drawX = 0;
+    for (const frameBins of framesArray) {
+      // Draw frequency bins vertically
+      for (let binIndex = 0; binIndex < frameBins.length; binIndex++) {
+        const value = frameBins[binIndex];
+        spectroCtx.fillStyle = `hsl(${value * 1.5},100%,50%)`;
+        spectroCtx.fillRect(drawX, USEFUL_CANVAS_HEIGHT - binIndex, 1, 1);
+      }
+
+      // Draw minute tick if needed
+      const elapsed = chunkStartTime + drawX * 0.05;
+      if (Math.floor(elapsed) % 60 === 0) {
+        spectroCtx.strokeStyle = '#fff';
+        spectroCtx.lineWidth = (Math.floor(elapsed) % 900 === 0 ? 24 : 8);
+        spectroCtx.beginPath();
+        spectroCtx.moveTo(drawX + 0.5, USEFUL_CANVAS_HEIGHT);
+        spectroCtx.lineTo(drawX + 0.5, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT);
+        spectroCtx.stroke();
+      }
+
+      // Draw time label every PIXEL_LABEL_INTERVAL
+      if (drawX % PIXEL_LABEL_INTERVAL === 0) {
+        const label = formatTime(elapsed);
+        const labelWidth = spectroCtx.measureText(label).width;
+        spectroCtx.fillStyle = '#000';
+        spectroCtx.fillRect(
+          drawX - labelWidth / 2 - LABEL_PADDING,
+          USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT,
+          labelWidth + 2 * LABEL_PADDING,
+          LABEL_AREA_HEIGHT
+        );
+        spectroCtx.fillStyle = '#fff';
+        spectroCtx.textAlign = 'center';
+        spectroCtx.textBaseline = 'top';
+        spectroCtx.font = '12px sans-serif';
+        spectroCtx.fillText(label, drawX, USEFUL_CANVAS_HEIGHT + MINUTE_TICK_HEIGHT + 2);
+      }
+
+      drawX++;
+    }
+
+    // If this is the last chunk, remember the final row width
+    finalRowWidth = drawX;
+
+    // Add canvases & contexts to arrays for Phase 2
+    rowsContainer.appendChild(rowDiv);
+    spectrogramRows.push({ canvas: spectroCanvas, ctx: spectroCtx });
+    cursorOverlayRows.push({ canvas: overlayCanvas, ctx: overlayCtx });
+  }
+
+  function finalizeSpectrogram() {
+    hasFinishedSpectrogram = true;
+    timeStatus.textContent = 'Spectrogram complete.';
+    setupPlaybackPhase();  // jump into Phase 2
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // PHASE 2: Playback with Cursor & Controls (unchanged)
+
+  function setupPlaybackPhase() {
+    playerControls.style.display = 'block';
+
+    // Create playback Audio()
+    playbackPhaseAudio = new Audio(URL.createObjectURL(fileInput.files[0]));
+    playbackPhaseAudio.crossOrigin = 'anonymous';
+    playbackPhaseAudio.preload = 'auto';
+    playbackPhaseAudio.playbackRate = 1.0;
+
+    // Media Session handlers
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: fileInput.files[0]?.name || 'Audio',
+        artist: 'Spectrogram Player',
+        album: '',
+        artwork: []
+      });
+      navigator.mediaSession.setActionHandler('seekto', details => {
+        if (details.fastSeek && typeof playbackPhaseAudio.fastSeek === 'function') {
+          playbackPhaseAudio.fastSeek(details.seekTime);
+        } else {
+          playbackPhaseAudio.currentTime = details.seekTime;
+        }
+        drawPlaybackCursor();
+      });
+      navigator.mediaSession.setActionHandler('play',  () => playbackPhaseAudio.play());
+      navigator.mediaSession.setActionHandler('pause', () => playbackPhaseAudio.pause());
+    }
+
+    // Enable row click-to-seek
+    cursorOverlayRows.forEach(({ canvas, ctx }, rowIndex) => {
+      canvas.style.pointerEvents = 'auto';
+      canvas.addEventListener('click', e => {
+        const rect = canvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const rowStart = rowStartTimeMarkers[rowIndex];
+        const rowEnd   = rowStartTimeMarkers[rowIndex + 1] || playbackPhaseAudio.duration;
+        const rowWidth = (rowIndex === rowStartTimeMarkers.length - 1) ? finalRowWidth : SCREEN_WIDTH;
+        const seekTime = rowStart + (clickX / rowWidth) * (rowEnd - rowStart);
+        playbackPhaseAudio.currentTime = seekTime;
+        playbackPhaseAudio.play();
+        drawPlaybackCursor();
+      });
+    });
+
+    // Wire up controls
+    playbackPhaseAudio.addEventListener('play',  () => { playPauseButton.textContent = 'Pause';  });
+    playbackPhaseAudio.addEventListener('pause', () => { playPauseButton.textContent = 'Play';   });
+    playbackPhaseAudio.addEventListener('ended', () => { playPauseButton.textContent = 'Play';   });
+
+    playbackPhaseAudio.addEventListener('timeupdate', () => {
+      timeStatus.textContent = `Playback: ${formatTime(playbackPhaseAudio.currentTime)} / ${formatTime(playbackPhaseAudio.duration)}`;
+      drawPlaybackCursor();
+    });
+
+    rewind15Seconds.addEventListener('click', () => {
+      playbackPhaseAudio.currentTime = Math.max(0, playbackPhaseAudio.currentTime - 15);
+      drawPlaybackCursor();
+    });
+    forward15Seconds.addEventListener('click', () => {
+      playbackPhaseAudio.currentTime = Math.min(playbackPhaseAudio.duration, playbackPhaseAudio.currentTime + 15);
+      drawPlaybackCursor();
+    });
+    playPauseButton.addEventListener('click', () => {
+      playbackPhasePlaying
+        ? playbackPhaseAudio.pause()
+        : playbackPhaseAudio.play();
+    });
+  }
+
+  function drawPlaybackCursor() {
+    if (!playbackPhaseAudio) return;
+    const currentTime = playbackPhaseAudio.currentTime;
+
+    cursorOverlayRows.forEach(({ canvas, ctx }, rowIndex) => {
+      ctx.clearRect(0, 0, SCREEN_WIDTH, ROW_HEIGHT);
+      const rowStart = rowStartTimeMarkers[rowIndex];
+      const rowEnd   = rowStartTimeMarkers[rowIndex + 1] || playbackPhaseAudio.duration;
+      if (currentTime < rowStart || currentTime > rowEnd) return;
+
+      const isLastRow = rowIndex === rowStartTimeMarkers.length - 1;
+      const rowWidth  = isLastRow ? finalRowWidth : SCREEN_WIDTH;
+      const xPosition = ((currentTime - rowStart) / (rowEnd - rowStart)) * rowWidth;
+
+      // Draw semi-transparent red trail
+      const trailWidth = 20;
+      const trailStartX = Math.max(0, xPosition - trailWidth);
+      ctx.fillStyle = 'rgba(255,0,0,0.33)';
+      ctx.fillRect(trailStartX, 0, trailWidth, ROW_HEIGHT);
+
+      // Draw red cursor line
+      ctx.lineWidth = 5; ctx.strokeStyle = 'red';
+      ctx.beginPath(); ctx.moveTo(xPosition+0.5,0); ctx.lineTo(xPosition+0.5,ROW_HEIGHT); ctx.stroke();
+      // White highlight
+      ctx.lineWidth = 3; ctx.strokeStyle = 'white';
+      ctx.beginPath(); ctx.moveTo(xPosition+0.5,0); ctx.lineTo(xPosition+0.5,ROW_HEIGHT); ctx.stroke();
+      // Black outline
+      ctx.lineWidth = 1; ctx.strokeStyle = 'black';
+      ctx.beginPath(); ctx.moveTo(xPosition+0.5,0); ctx.lineTo(xPosition+0.5,ROW_HEIGHT); ctx.stroke();
+    });
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // File metadata display
+  fileInput.addEventListener('change', () => {
+    if (!fileInput.files[0]) {
+      timeStatus.textContent = 'No file loaded.';
+      fileDurationStatus.textContent = '';
+      return;
+    }
+    const tempAudio = document.createElement('audio');
+    tempAudio.src = URL.createObjectURL(fileInput.files[0]);
+    tempAudio.addEventListener('loadedmetadata', () => {
+      fileDurationStatus.textContent = 'Total Duration: ' + formatTime(tempAudio.duration);
+    });
+  });
+
+  exportButton.addEventListener('click', () => {
+    alert('Export not implemented.');
+  });
+
+</script>
+
+</body>
+</html>
