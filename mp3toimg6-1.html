@@ -110,6 +110,10 @@ let currentInteractionMode = 'seek';
 let isMouseDragging = false;
 let isTouchDragging = false;
 
+    let initialTouchX = null;
+let initialTouchY = null;
+const DRAG_THRESHOLD = 10; // minimum movement in pixels to be considered a drag
+    
 function formatTime(t) {
   const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = Math.floor(t % 60);
   return `${h}h${m}m${s}s`;
@@ -292,6 +296,13 @@ function getEventX(e) {
 function handleCanvasInteractionStart(rowIndex) {
   return (e) => {
     const x = getEventX(e);
+    if (e.type.startsWith('touch')) {
+      isTouchDragging = false;
+      const touch = e.touches[0];
+      initialTouchX = touch.clientX;
+      initialTouchY = touch.clientY;
+    }
+
     if (currentInteractionMode === 'seek') {
       const t0 = rowStartTimeMarkers[rowIndex];
       const t1 = rowStartTimeMarkers[rowIndex + 1] || playbackPhaseAudio.duration;
@@ -301,21 +312,34 @@ function handleCanvasInteractionStart(rowIndex) {
       playbackPhaseAudio.play();
       drawPlaybackCursor();
     } else {
-      if (e.type.startsWith('touch')) isTouchDragging = true;
-      else isMouseDragging = true;
-      paintAnnotation(rowIndex, x);
-      e.preventDefault();
+      if (!e.type.startsWith('touch')) {
+        isMouseDragging = true;
+        paintAnnotation(rowIndex, x);
+      }
     }
   };
 }
 
 function handleCanvasInteractionMove(rowIndex) {
   return (e) => {
-    const dragging = isMouseDragging || isTouchDragging;
-    if (currentInteractionMode === 'annotate' && dragging) {
+    if (e.type.startsWith('touch')) {
+      const touch = e.touches[0];
+      const dx = Math.abs(touch.clientX - initialTouchX);
+      const dy = Math.abs(touch.clientY - initialTouchY);
+
+      // Only activate annotation mode if horizontal movement is stronger
+      if (!isTouchDragging && dx > DRAG_THRESHOLD && dx > dy) {
+        isTouchDragging = true;
+      }
+
+      if (isTouchDragging && currentInteractionMode === 'annotate') {
+        const x = getEventX(e);
+        paintAnnotation(rowIndex, x);
+        e.preventDefault();  // only block scrolling if it's an annotation drag
+      }
+    } else if (isMouseDragging && currentInteractionMode === 'annotate') {
       const x = getEventX(e);
       paintAnnotation(rowIndex, x);
-      e.preventDefault();
     }
   };
 }
