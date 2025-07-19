@@ -253,33 +253,54 @@ if (!hasFinishedSpectrogram &&
   }
 
   function drawPlaybackCursor() {
-    if (!playbackPhaseAudio) return;
-    const t = playbackPhaseAudio.currentTime;
+  if (!playbackPhaseAudio) return;
+  const currentTime = playbackPhaseAudio.currentTime;
 
-    cursorOverlayRows.forEach(({ canvas, ctx }, idx) => {
-      ctx.clearRect(0, 0, SCREEN_WIDTH, ROW_HEIGHT);
+  cursorOverlayRows.forEach(({ canvas, ctx }, rowIndex) => {
+    ctx.clearRect(0, 0, SCREEN_WIDTH, ROW_HEIGHT);
 
-      const t0 = rowStartTimeMarkers[idx];
-      const t1 = rowStartTimeMarkers[idx+1] || playbackPhaseAudio.duration;
+    const rowStartTime = rowStartTimeMarkers[rowIndex];
+    const nextRowStartTime = rowStartTimeMarkers[rowIndex + 1] || playbackPhaseAudio.duration;
 
-      if (t < t0 || t > t1) return;
+    if (currentTime < rowStartTime || currentTime > nextRowStartTime) return;
 
-      const isLastRow = idx === rowStartTimeMarkers.length - 1;
-      const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
+    const isLastRow = rowIndex === rowStartTimeMarkers.length - 1;
+    const rowWidth = isLastRow ? finalRowWidth : SCREEN_WIDTH;
 
-      const x = (t - t0) / (t1 - t0) * rowWidth;
+    const xPosition = (currentTime - rowStartTime) / (nextRowStartTime - rowStartTime) * rowWidth;
 
-      ctx.lineWidth = 5; ctx.strokeStyle = 'red';
-      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, ROW_HEIGHT); ctx.stroke();
+    // Draw trailing red rectangle (20px wide, 33% transparent)
+    const trailWidth = 20;
+    const trailStartX = Math.max(0, xPosition - trailWidth);
 
-      ctx.lineWidth = 3; ctx.strokeStyle = 'white';
-      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, ROW_HEIGHT); ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 0, 0, 0.33)';
+    ctx.fillRect(trailStartX, 0, trailWidth, ROW_HEIGHT);
 
-      ctx.lineWidth = 1; ctx.strokeStyle = 'black';
-      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, ROW_HEIGHT); ctx.stroke();
-    });
-  }
+    // Draw red main cursor line
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = 'red';
+    ctx.beginPath();
+    ctx.moveTo(xPosition + 0.5, 0);
+    ctx.lineTo(xPosition + 0.5, ROW_HEIGHT);
+    ctx.stroke();
 
+    // Draw white highlight line
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'white';
+    ctx.beginPath();
+    ctx.moveTo(xPosition + 0.5, 0);
+    ctx.lineTo(xPosition + 0.5, ROW_HEIGHT);
+    ctx.stroke();
+
+    // Draw black outline line
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'black';
+    ctx.beginPath();
+    ctx.moveTo(xPosition + 0.5, 0);
+    ctx.lineTo(xPosition + 0.5, ROW_HEIGHT);
+    ctx.stroke();
+  });
+}
   rewind15Seconds.addEventListener('click', () => {
     if (!playbackPhaseAudio) return;
     playbackPhaseAudio.currentTime = Math.max(0, playbackPhaseAudio.currentTime - 15);
