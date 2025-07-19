@@ -110,9 +110,10 @@ let currentInteractionMode = 'seek';
 let isMouseDragging = false;
 let isTouchDragging = false;
 
-    let initialTouchX = null;
+let initialTouchX = null;
 let initialTouchY = null;
-const DRAG_THRESHOLD = 10; // minimum movement in pixels to be considered a drag
+let touchMoved = false;
+const DRAG_THRESHOLD = 10; // pixels
     
 function formatTime(t) {
   const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = Math.floor(t % 60);
@@ -296,25 +297,19 @@ function getEventX(e) {
 function handleCanvasInteractionStart(rowIndex) {
   return (e) => {
     const x = getEventX(e);
+
     if (e.type.startsWith('touch')) {
-      isTouchDragging = false;
       const touch = e.touches[0];
       initialTouchX = touch.clientX;
       initialTouchY = touch.clientY;
-    }
-
-    if (currentInteractionMode === 'seek') {
-      const t0 = rowStartTimeMarkers[rowIndex];
-      const t1 = rowStartTimeMarkers[rowIndex + 1] || playbackPhaseAudio.duration;
-      const rowWidth = rowIndex === rowStartTimeMarkers.length - 1 ? finalRowWidth : SCREEN_WIDTH;
-      const seekTime = t0 + (x / rowWidth) * (t1 - t0);
-      playbackPhaseAudio.currentTime = seekTime;
-      playbackPhaseAudio.play();
-      drawPlaybackCursor();
+      touchMoved = false;
     } else {
-      if (!e.type.startsWith('touch')) {
+      if (currentInteractionMode === 'annotate') {
         isMouseDragging = true;
         paintAnnotation(rowIndex, x);
+      } else if (currentInteractionMode === 'seek') {
+        // mouse clicks = immediate seek
+        seekToPosition(rowIndex, x);
       }
     }
   };
@@ -327,15 +322,15 @@ function handleCanvasInteractionMove(rowIndex) {
       const dx = Math.abs(touch.clientX - initialTouchX);
       const dy = Math.abs(touch.clientY - initialTouchY);
 
-      // Only activate annotation mode if horizontal movement is stronger
-      if (!isTouchDragging && dx > DRAG_THRESHOLD && dx > dy) {
-        isTouchDragging = true;
+      if (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD) {
+        touchMoved = true; // too much motion, treat as scroll/drag
       }
 
-      if (isTouchDragging && currentInteractionMode === 'annotate') {
+      if (currentInteractionMode === 'annotate' && !touchMoved) {
         const x = getEventX(e);
+        isTouchDragging = true;
         paintAnnotation(rowIndex, x);
-        e.preventDefault();  // only block scrolling if it's an annotation drag
+        e.preventDefault();
       }
     } else if (isMouseDragging && currentInteractionMode === 'annotate') {
       const x = getEventX(e);
@@ -344,11 +339,30 @@ function handleCanvasInteractionMove(rowIndex) {
   };
 }
 
-function handleCanvasInteractionEnd() {
+function handleCanvasInteractionEnd(e) {
+  if (e.type.startsWith('touch') && !touchMoved && currentInteractionMode === 'seek') {
+    const x = getEventX(e);
+    const targetCanvas = e.target;
+    const rowIndex = cursorOverlayRows.findIndex(row => row.canvas === targetCanvas);
+    if (rowIndex !== -1) {
+      seekToPosition(rowIndex, x);
+    }
+  }
+
   isMouseDragging = false;
   isTouchDragging = false;
 }
 
+function seekToPosition(rowIndex, x) {
+  const t0 = rowStartTimeMarkers[rowIndex];
+  const t1 = rowStartTimeMarkers[rowIndex + 1] || playbackPhaseAudio.duration;
+  const rowWidth = rowIndex === rowStartTimeMarkers.length - 1 ? finalRowWidth : SCREEN_WIDTH;
+  const seekTime = t0 + (x / rowWidth) * (t1 - t0);
+  playbackPhaseAudio.currentTime = seekTime;
+  playbackPhaseAudio.play();
+  drawPlaybackCursor();
+}
+    
 function paintAnnotation(rowIndex, xPosition) {
   const ctx = annotationCanvases[rowIndex].ctx;
   const snappedX = Math.floor(xPosition / 50) * 50;
