@@ -42,11 +42,7 @@
   <div id="digital-time"></div>
 
 
-<!-- Add these inside <body>, after the digital time -->
-<div style="margin-top:0.5em; text-align:center;">
-  <button onclick="fixedUtcOffsetHours--; drawClockFace(); updateDigitalTime();">−</button>
-  <button onclick="fixedUtcOffsetHours++; drawClockFace(); updateDigitalTime();">+</button>
-</div>
+
 
 
 <script>
@@ -59,7 +55,7 @@
     const digitalDisplay    = document.getElementById('digital-time');
 
     // Set your fixed UTC offset here (e.g., -8 for UTC-8)
-    const fixedUtcOffsetHours = -8;
+    let fixedUtcOffsetHours = -8;
 
     /**
      * Resize the canvas to fill the width of the window,
