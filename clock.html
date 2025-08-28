@@ -42,6 +42,11 @@
   <div id="digital-time"></div>
 
 
+<!-- Add these inside <body>, after the digital time -->
+<div style="margin-top:0.5em; text-align:center;">
+  <button onclick="fixedUtcOffsetHours--; drawClockFace(); updateDigitalTime();">−</button>
+  <button onclick="fixedUtcOffsetHours++; drawClockFace(); updateDigitalTime();">+</button>
+</div>
 
 
 <script>
