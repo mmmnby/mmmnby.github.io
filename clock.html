@@ -41,7 +41,39 @@
   <!-- Div for showing the digital time -->
   <div id="digital-time"></div>
 
-  <script>
+
+  <div id="utc-controls" style="margin-top:0.5em; text-align:center;">
+  <button id="decrease-utc">−</button>
+  <span style="margin:0 1em;">UTC Offset</span>
+  <button id="increase-utc">+</button>
+</div>
+
+<script>
+
+  // plus minus  buttons to adjust UTC offset
+  
+  const decreaseButton = document.getElementById('decrease-utc');
+  const increaseButton = document.getElementById('increase-utc');
+
+  // Make the fixedUtcOffsetHours variable mutable
+  let currentUtcOffset = fixedUtcOffsetHours;
+
+  decreaseButton.addEventListener('click', () => {
+    currentUtcOffset -= 1;
+    fixedUtcOffsetHours = currentUtcOffset; // override the existing offset
+    drawClockFace();
+    updateDigitalTime();
+  });
+
+  increaseButton.addEventListener('click', () => {
+    currentUtcOffset += 1;
+    fixedUtcOffsetHours = currentUtcOffset; // override the existing offset
+    drawClockFace();
+    updateDigitalTime();
+  });
+
+
+  
     // Get references to the canvas and digital display elements
     const canvas            = document.getElementById('clock-canvas');
     const context           = canvas.getContext('2d');
