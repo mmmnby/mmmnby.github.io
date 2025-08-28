@@ -143,24 +143,30 @@
      * Draw the 24 hour numbers around the clock.
      */
     function drawClockHourNumbers(radius) {
-      const fontSize     = Math.max(10, radius * 0.08);
-      context.font        = `${fontSize}px sans-serif`;
-      context.textAlign   = 'center';
-      context.textBaseline= 'middle';
+  const fontSize      = Math.max(10, radius * 0.08);
+  context.font         = `${fontSize}px sans-serif`;
+  context.textAlign    = 'center';
+  context.textBaseline = 'middle';
 
-      // Place numbers just outside the ticks
-      const numberRadius = radius * 1.10;
+  const numberRadius = radius * 1.10;
 
-      for (let hour = 0; hour < 24; hour++) {
-        // Angle offset so “0” is at the bottom
-        const angle = hour * 2 * Math.PI / 24 + 0.5 * Math.PI;
-        const x     = numberRadius * Math.cos(angle);
-        const y     = numberRadius * Math.sin(angle);
+  for (let hour = 0; hour < 24; hour++) {
+    const angle = hour * 2 * Math.PI / 24 + 0.5 * Math.PI;
+    const x     = numberRadius * Math.cos(angle);
+    const y     = numberRadius * Math.sin(angle);
 
-        context.fillStyle = '#000';
-        context.fillText(hour, x, y);
-      }
+    // Set color for specific hours
+    if (hour === 12) {
+      context.fillStyle = 'red';
+    } else if (hour === 0 || hour === 6 || hour === 18) {
+      context.fillStyle = 'blue';
+    } else {
+      context.fillStyle = '#000';
     }
+
+    context.fillText(hour, x, y);
+  }
+}
 
     /**
      * Draw the hour hand based on the fixed UTC offset.
