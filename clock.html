@@ -42,6 +42,30 @@
   <div id="digital-time"></div>
 
 
+<!-- Place below the digital display div -->
+<div id="utc-buttons" style="margin-top:0.5em; text-align:center;">
+  <button id="utc-minus">−</button>
+  <button id="utc-plus">+</button>
+</div>
+
+<script>
+  const utcMinusButton = document.getElementById('utc-minus');
+  const utcPlusButton  = document.getElementById('utc-plus');
+
+  // Decrease UTC offset by 1
+  utcMinusButton.addEventListener('click', () => {
+    fixedUtcOffsetHours -= 1;
+    drawClockFace();
+    updateDigitalTime();
+  });
+
+  // Increase UTC offset by 1
+  utcPlusButton.addEventListener('click', () => {
+    fixedUtcOffsetHours += 1;
+    drawClockFace();
+    updateDigitalTime();
+  });
+</script>
 
 
 
