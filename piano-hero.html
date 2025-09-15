@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Piano Hero (HTML5 demo)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  /* Minimal visual styling */
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:#111; color:#eee; margin:0; display:flex; flex-direction:column; align-items:center; }
+  #gameContainer { margin:20px; display:flex; gap:16px; align-items:flex-start; }
+  canvas { background: linear-gradient(#0b0b0b, #131313); border:1px solid #444; border-radius:6px; }
+  .controls { width:320px; }
+  .controls button, .controls label { display:block; margin:8px 0; }
+  .legend { font-size:13px; color:#ccc; margin-top:8px; }
+  .status { font-size:13px; margin-top:8px; color:#9f9; }
+  .keyVisualRow { margin-top:12px; display:flex; gap:4px; flex-wrap:wrap; }
+  .keyVisual { width:26px; height:90px; background:#222; border-radius:4px; box-shadow:inset 0 -6px 12px rgba(0,0,0,.6); text-align:center; color:#bbb; line-height:90px; font-size:12px; user-select:none; cursor:pointer; }
+  .keyVisual.active { background:#2e6; color:#030; font-weight:700; box-shadow:0 0 8px #2e6; }
+</style>
+</head>
+<body>
+
+<h2>Piano Hero — HTML5 demo</h2>
+<div id="gameContainer">
+  <div>
+    <canvas id="noteCanvas" width="700" height="500"></canvas>
+    <div class="keyVisualRow" id="onScreenKeyRow"></div>
+  </div>
+
+  <div class="controls">
+    <button id="startButton">Start Song</button>
+    <button id="stopButton" disabled>Stop</button>
+
+    <label>
+      <input type="checkbox" id="enableMidiCheckbox"> Enable Web MIDI (if available)
+    </label>
+
+    <label>
+      Hit window (ms):
+      <input type="range" id="hitWindowRange" min="50" max="300" value="130">
+      <span id="hitWindowValue">130</span> ms
+    </label>
+
+    <div class="legend">
+      Keyboard fallback mapping (left-to-right on piano):<br>
+      Use row: Z S X D C V G B H N J M , . /
+    </div>
+
+    <div class="status" id="gameStatus">Status: idle</div>
+    <div class="status" id="scoreDisplay">Score: 0 &nbsp; Combo: 0</div>
+  </div>
+</div>
+
+<script>
+/*
+Piano Hero — single-file demo.
+Features:
+ - Render falling notes on a canvas (columns -> piano keys).
+ - Accept input from Web MIDI (preferred) or computer keyboard fallback.
+ - Simple WebAudio synth to play tones (replace playNoteSample with samples to improve quality).
+ - Scoring with timing window.
+ - Clear, descriptive variable names and beginner-friendly comments.
+
+Author's note: This is a prototype; improve timing, visuals, and audio for production use.
+*/
+
+/* -------------------------
+   Configuration
+   ------------------------- */
+const numberOfVisibleKeys = 14;       // How many piano columns we show horizontally
+const lowestVisibleMidiNote = 60 - 5; // Base MIDI note (60 is Middle C). Adjust to shift visible keys.
+const pixelsPerSecondForNoteFall = 200; // Vertical speed of falling notes (px/s)
+const noteRectangleWidth = 48;        // width of each falling note rectangle (canvas units)
+const hitTargetYPosition = 420;       // y-coordinate (pixels) where notes should be hit
+const noteRectangleHeight = 18;       // visual height of each falling note
+const framesPerSecondTarget = 60;     // target FPS for render loop
+
+/* -------------------------
+   DOM references
+   ------------------------- */
+const canvasElement = document.getElementById('noteCanvas');
+const canvasRenderingContext = canvasElement.getContext('2d');
+const startButtonElement = document.getElementById('startButton');
+const stopButtonElement = document.getElementById('stopButton');
+const enableMidiCheckboxElement = document.getElementById('enableMidiCheckbox');
+const hitWindowRangeElement = document.getElementById('hitWindowRange');
+const hitWindowValueElement = document.getElementById('hitWindowValue');
+const gameStatusElement = document.getElementById('gameStatus');
+const scoreDisplayElement = document.getElementById('scoreDisplay');
+const onScreenKeyRowElement = document.getElementById('onScreenKeyRow');
+
+/* -------------------------
+   Audio (WebAudio) setup
+   ------------------------- */
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+/**
+ * Play a synthesized piano-like note (very simple) using WebAudio
+ * @param {number} midiNote - MIDI note number (e.g. 60 = Middle C)
+ * @param {number} velocity - [0..1] volume scale
+ */
+function playSynthesizedNote(midiNote, velocity = 0.9) {
+  const oscillatorPrimary = audioContext.createOscillator();
+  const oscillatorSecondary = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+  const filterNode = audioContext.createBiquadFilter();
+
+  const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
+  oscillatorPrimary.type = 'sine';
+  oscillatorSecondary.type = 'triangle';
+  oscillatorPrimary.frequency.value = frequency;
+  oscillatorSecondary.frequency.value = frequency * 2;
+
+  // Simple ADSR envelope
+  const now = audioContext.currentTime;
+  gainNode.gain.cancelScheduledValues(now);
+  gainNode.gain.setValueAtTime(0.0001, now);
+  gainNode.gain.linearRampToValueAtTime(velocity * 0.8, now + 0.005); // attack
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 1.8); // release
+
+  filterNode.type = 'lowpass';
+  filterNode.frequency.setValueAtTime(4000, now);
+
+  oscillatorPrimary.connect(gainNode);
+  oscillatorSecondary.connect(gainNode);
+  gainNode.connect(filterNode);
+  filterNode.connect(audioContext.destination);
+
+  oscillatorPrimary.start(now);
+  oscillatorSecondary.start(now);
+  oscillatorPrimary.stop(now + 2.0);
+  oscillatorSecondary.stop(now + 2.0);
+}
+
+/* If you have high-quality piano samples, replace playSynthesizedNote with sample playback:
+   function playNoteSample(midiNote, velocity) { ... load sample buffer and play ... }
+   For this demo we simply synthesize.
+*/
+
+/* -------------------------
+   Game state
+   ------------------------- */
+let animationRequestHandle = null;
+let lastAnimationTimestamp = null;
+let songStartTimeInAudioContext = null;
+let isSongPlaying = false;
+
+const hitWindowMilliseconds = Number(hitWindowRangeElement.value); // will be updated on change
+
+let currentScore = 0;
+let currentCombo = 0;
+
+/* Array of active falling notes (notes currently on-screen or soon to be).
+   Each note object:
+     { midiNote: Number,
+       startTimeSeconds: Number,  // when note should be played in seconds from song start
+       columnIndex: Number,       // 0..numberOfVisibleKeys-1
+       hitRegistered: Boolean }   // whether the player already hit this note
+*/
+let activeFallingNotes = [];
+
+/* -------------------------
+   Demo song definition
+   -------------------------
+   A simple song: an array of note events with times (seconds) and MIDI notes.
+   Replace with your own song generation/level data.
+*/
+const demoSongNotes = [
+  // a small arpeggio over time to demonstrate gameplay
+  { time: 0.8, midiNote: 64 }, { time: 1.4, midiNote: 67 }, { time: 2.0, midiNote: 71 },
+  { time: 2.6, midiNote: 72 }, { time: 3.2, midiNote: 71 }, { time: 3.8, midiNote: 67 },
+  { time: 4.4, midiNote: 64 }, { time: 5.0, midiNote: 60 }, { time: 5.6, midiNote: 64 },
+  { time: 6.2, midiNote: 67 }, { time: 7.0, midiNote: 71 }, { time: 7.8, midiNote: 72 },
+  { time: 8.6, midiNote: 71 }, { time: 9.4, midiNote: 67 }, { time: 10.2, midiNote: 64 }
+];
+
+/* Convert demo song into events that create falling notes ahead of time */
+function prepareActiveFallingNotesFromSong(songNoteArray) {
+  activeFallingNotes = songNoteArray.map(noteEvent => {
+    const columnForNote = midiNoteToVisibleColumn(noteEvent.midiNote);
+    return {
+      midiNote: noteEvent.midiNote,
+      startTimeSeconds: noteEvent.time,
+      columnIndex: columnForNote,
+      hitRegistered: false
+    };
+  });
+}
+
+/* -------------------------
+   Utility: map MIDI note -> visible column
+   If note falls outside visible range, clamp it
+*/
+function midiNoteToVisibleColumn(midiNote) {
+  const index = midiNote - lowestVisibleMidiNote;
+  if (index < 0) return 0;
+  if (index >= numberOfVisibleKeys) return numberOfVisibleKeys - 1;
+  return index;
+}
+
+/* -------------------------
+   Rendering
+   ------------------------- */
+function renderFrame(currentTimestampMs) {
+  if (!isSongPlaying) return;
+
+  // Convert timestamp to seconds relative to audio context song start (use audioContext time for sync)
+  const currentAudioTimeSeconds = audioContext.currentTime - songStartTimeInAudioContext;
+
+  // Clear canvas
+  canvasRenderingContext.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+  // Draw static piano key columns (visual reference)
+  drawKeyColumns();
+
+  // For each active note, compute Y position and draw rectangle
+  activeFallingNotes.forEach(noteObject => {
+    const timeUntilNoteInSeconds = noteObject.startTimeSeconds - currentAudioTimeSeconds;
+    // If spawn point is such that it hasn't entered view yet, it should be above top.
+    // We convert note timing to Y coordinate: y = hitTargetYPosition - timeUntilNote * pixelsPerSecond
+    const yPosition = hitTargetYPosition - timeUntilNoteInSeconds * pixelsPerSecondForNoteFall;
+
+    // Only render if within canvas vertical bounds
+    if (yPosition < -100 || yPosition > canvasElement.height + 200) {
+      return;
+    }
+
+    const xPosition = 10 + noteObject.columnIndex * (noteRectangleWidth + 6);
+
+    // color the note differently if already hit
+    const noteColor = noteObject.hitRegistered ? '#2e6' : '#48a';
+    canvasRenderingContext.fillStyle = noteColor;
+    canvasRenderingContext.fillRect(xPosition, yPosition - noteRectangleHeight / 2, noteRectangleWidth, noteRectangleHeight);
+
+    // small outline
+    canvasRenderingContext.strokeStyle = '#001';
+    canvasRenderingContext.strokeRect(xPosition, yPosition - noteRectangleHeight / 2, noteRectangleWidth, noteRectangleHeight);
+  });
+
+  // Draw hit target line
+  canvasRenderingContext.strokeStyle = '#fff';
+  canvasRenderingContext.beginPath();
+  canvasRenderingContext.moveTo(0, hitTargetYPosition);
+  canvasRenderingContext.lineTo(canvasElement.width, hitTargetYPosition);
+  canvasRenderingContext.stroke();
+
+  // Remove notes that have long passed beyond hit window
+  const removeThresholdSeconds = 3.0;
+  activeFallingNotes = activeFallingNotes.filter(noteObj => (noteObj.startTimeSeconds - currentAudioTimeSeconds) > -removeThresholdSeconds);
+}
+
+/* Draw piano columns (simplified visual)
+   We show numberOfVisibleKeys columns and small labels
+*/
+function drawKeyColumns() {
+  const leftPadding = 10;
+  for (let columnIndex = 0; columnIndex < numberOfVisibleKeys; columnIndex++) {
+    const xPosition = leftPadding + columnIndex * (noteRectangleWidth + 6);
+    canvasRenderingContext.fillStyle = '#222';
+    canvasRenderingContext.fillRect(xPosition, 0, noteRectangleWidth, canvasElement.height);
+
+    // Label the key with MIDI note number
+    const midiNoteNumber = lowestVisibleMidiNote + columnIndex;
+    canvasRenderingContext.fillStyle = '#888';
+    canvasRenderingContext.font = '12px system-ui, sans-serif';
+    canvasRenderingContext.fillText(midiNoteNumber, xPosition + 6, canvasElement.height - 10);
+
+    // Thin separator
+    canvasRenderingContext.strokeStyle = '#111';
+    canvasRenderingContext.beginPath();
+    canvasRenderingContext.moveTo(xPosition + noteRectangleWidth + 3, 0);
+    canvasRenderingContext.lineTo(xPosition + noteRectangleWidth + 3, canvasElement.height);
+    canvasRenderingContext.stroke();
+  }
+}
+
+/* -------------------------
+   Game loop control
+   ------------------------- */
+function startSongPlayback() {
+  if (isSongPlaying) return;
+  // resume audio context in case it was suspended (user gesture required)
+  audioContext.resume().then(() => {
+    prepareActiveFallingNotesFromSong(demoSongNotes);
+    songStartTimeInAudioContext = audioContext.currentTime;
+    isSongPlaying = true;
+    startButtonElement.disabled = true;
+    stopButtonElement.disabled = false;
+    gameStatusElement.textContent = 'Status: playing';
+    lastAnimationTimestamp = performance.now();
+    scheduleRenderLoop();
+  });
+}
+
+function stopSongPlayback() {
+  if (!isSongPlaying) return;
+  isSongPlaying = false;
+  startButtonElement.disabled = false;
+  stopButtonElement.disabled = true;
+  gameStatusElement.textContent = 'Status: stopped';
+  if (animationRequestHandle) cancelAnimationFrame(animationRequestHandle);
+  animationRequestHandle = null;
+  // reset game state
+  currentScore = 0;
+  currentCombo = 0;
+  updateScoreDisplay();
+}
+
+/* Request animation frame loop that renders frames at ~60fps (or browser refresh rate) */
+function scheduleRenderLoop() {
+  function frameCallback(timestamp) {
+    if (!isSongPlaying) return;
+    renderFrame(timestamp);
+    animationRequestHandle = requestAnimationFrame(frameCallback);
+  }
+  animationRequestHandle = requestAnimationFrame(frameCallback);
+}
+
+/* -------------------------
+   Input: Keyboard fallback mapping
+   -------------------------
+   Map computer keyboard keys to relative piano keys when MIDI is unavailable.
+   We'll make a map from key character -> MIDI note offset from lowestVisibleMidiNote.
+*/
+const fallbackComputerKeyboardLayout = [
+  'z','s','x','d','c','v','g','b','h','n','j','m',',','.','/'
+];
+// create mapping char -> midi
+const computerKeyToMidiNoteMap = {};
+for (let i = 0; i < fallbackComputerKeyboardLayout.length; i++) {
+  const char = fallbackComputerKeyboardLayout[i];
+  computerKeyToMidiNoteMap[char] = lowestVisibleMidiNote + i;
+}
+
+/* Visual on-screen key elements (clickable) */
+function createOnScreenKeyVisuals() {
+  onScreenKeyRowElement.innerHTML = '';
+  for (let i = 0; i < numberOfVisibleKeys; i++) {
+    const midiNoteNumber = lowestVisibleMidiNote + i;
+    const keyDiv = document.createElement('div');
+    keyDiv.className = 'keyVisual';
+    keyDiv.textContent = midiNoteNumber;
+    keyDiv.dataset.midi = midiNoteNumber;
+    keyDiv.addEventListener('mousedown', () => {
+      simulateNoteDownFromInput(midiNoteNumber);
+      keyDiv.classList.add('active');
+    });
+    keyDiv.addEventListener('mouseup', () => {
+      keyDiv.classList.remove('active');
+    });
+    keyDiv.addEventListener('mouseleave', () => keyDiv.classList.remove('active'));
+    onScreenKeyRowElement.appendChild(keyDiv);
+  }
+}
+
+/* -------------------------
+   Hit detection & scoring
+   ------------------------- */
+
+/**
+ * Called when a note is 'pressed' from any input (MIDI, keyboard, on-screen click)
+ * Will evaluate timing against nearest matching active note in same column and award score.
+ */
+function simulateNoteDownFromInput(midiNoteNumber) {
+  // always play local audio for feedback
+  playSynthesizedNote(midiNoteNumber, 0.8);
+
+  // convert current audio time to seconds since song start
+  if (!isSongPlaying) return; // ignore input outside play
+  const currentAudioTimeSeconds = audioContext.currentTime - songStartTimeInAudioContext;
+
+  // find candidate active note(s) in same column that are not yet hit
+  const columnIndex = midiNoteToVisibleColumn(midiNoteNumber);
+  const candidateNotes = activeFallingNotes.filter(n => n.columnIndex === columnIndex && !n.hitRegistered);
+  if (candidateNotes.length === 0) {
+    // No note to hit -> miss
+    registerMiss();
+    return;
+  }
+
+  // Find the note with smallest absolute timing difference
+  let chosenNote = null;
+  let smallestAbsoluteTimingErrorSeconds = 1e9;
+  candidateNotes.forEach(note => {
+    const errorSeconds = Math.abs(note.startTimeSeconds - currentAudioTimeSeconds);
+    if (errorSeconds < smallestAbsoluteTimingErrorSeconds) {
+      smallestAbsoluteTimingErrorSeconds = errorSeconds;
+      chosenNote = note;
+    }
+  });
+
+  // Convert hitWindow Milliseconds to seconds
+  const hitWindowSeconds = Number(hitWindowRangeElement.value) / 1000;
+  if (smallestAbsoluteTimingErrorSeconds <= hitWindowSeconds) {
+    // Hit!
+    chosenNote.hitRegistered = true;
+    const timingMs = Math.round(smallestAbsoluteTimingErrorSeconds * 1000);
+    const points = scorePointsForTimingMs(timingMs);
+    currentScore += points;
+    currentCombo += 1;
+    showHitFeedback(points, timingMs);
+    updateScoreDisplay();
+  } else {
+    // Too early/late -> miss
+    registerMiss();
+  }
+}
+
+/* scoring function: give different points depending on accuracy in ms */
+function scorePointsForTimingMs(timingMs) {
+  if (timingMs <= 40) return 300;   // perfect
+  if (timingMs <= 80) return 150;   // great
+  if (timingMs <= 130) return 75;   // good
+  return 20;                         // acceptable but poor
+}
+
+function registerMiss() {
+  currentCombo = 0;
+  currentScore = Math.max(0, currentScore - 10); // small penalty
+  updateScoreDisplay();
+  // show visual feedback (quick flash)
+  flashCanvasRed();
+}
+
+function showHitFeedback(points, timingMs) {
+  // small console log + temporary status update
+  gameStatusElement.textContent = `Hit: +${points} (${timingMs}ms)`;
+  setTimeout(() => { if (isSongPlaying) gameStatusElement.textContent = 'Status: playing'; }, 400);
+}
+
+/* small canvas flash for miss */
+function flashCanvasRed() {
+  const original = canvasRenderingContext.globalAlpha;
+  canvasRenderingContext.fillStyle = 'rgba(255,0,0,0.06)';
+  canvasRenderingContext.fillRect(0, 0, canvasElement.width, canvasElement.height);
+  canvasRenderingContext.globalAlpha = original;
+}
+
+/* update score display DOM */
+function updateScoreDisplay() {
+  scoreDisplayElement.textContent = `Score: ${currentScore}  Combo: ${currentCombo}`;
+}
+
+/* -------------------------
+   Input event wiring (keyboard)
+   ------------------------- */
+window.addEventListener('keydown', (event) => {
+  // avoid repeating triggers while held down
+  if (event.repeat) return;
+  // map to lowercase for mapping table
+  const char = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  if (computerKeyToMidiNoteMap[char] !== undefined) {
+    const mappedMidi = computerKeyToMidiNoteMap[char];
+    highlightOnScreenKey(mappedMidi, true);
+    simulateNoteDownFromInput(mappedMidi);
+  }
+});
+
+window.addEventListener('keyup', (event) => {
+  const char = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  if (computerKeyToMidiNoteMap[char] !== undefined) {
+    const mappedMidi = computerKeyToMidiNoteMap[char];
+    highlightOnScreenKey(mappedMidi, false);
+  }
+});
+
+/* small helper to flash on-screen key visuals when pressed */
+function highlightOnScreenKey(midiNoteNumber, isActive) {
+  // find matching key visual
+  const nodes = onScreenKeyRowElement.querySelectorAll('.keyVisual');
+  nodes.forEach(node => {
+    if (Number(node.dataset.midi) === midiNoteNumber) {
+      if (isActive) node.classList.add('active'); else node.classList.remove('active');
+    }
+  });
+}
+
+/* -------------------------
+   Web MIDI support
+   ------------------------- */
+let midiAccessObject = null;
+let selectedMidiInputPort = null;
+
+/**
+ * Initialize Web MIDI subsystem (async).
+ * We'll listen to 'note on' messages and route them to simulateNoteDownFromInput.
+ */
+async function initializeWebMidiIfRequested() {
+  if (!enableMidiCheckboxElement.checked) {
+    updateGameStatus('MIDI not enabled (checkbox unchecked). Using keyboard fallback.');
+    return;
+  }
+  if (!navigator.requestMIDIAccess) {
+    updateGameStatus('Web MIDI not supported in this browser. Using keyboard fallback.');
+    return;
+  }
+  try {
+    midiAccessObject = await navigator.requestMIDIAccess();
+    updateGameStatus('Web MIDI: access granted. Select an input device (check console).');
+    // attach event listeners for all available inputs
+    for (let input of midiAccessObject.inputs.values()) {
+      attachMidiInputListener(input);
+    }
+    // also attach to future connections
+    midiAccessObject.onstatechange = (ev) => {
+      if (ev.port && ev.port.type === 'input' && ev.port.state === 'connected') {
+        attachMidiInputListener(ev.port);
+      }
+    };
+  } catch (error) {
+    updateGameStatus('Web MIDI initialization error. Check permissions. Fallback to keyboard.');
+    console.error('MIDI init error', error);
+  }
+}
+
+function attachMidiInputListener(midiInputPort) {
+  midiInputPort.onmidimessage = (messageEvent) => {
+    // messageEvent.data is a Uint8Array: [status, data1, data2]
+    const statusByte = messageEvent.data[0];
+    const data1 = messageEvent.data[1]; // note number
+    const data2 = messageEvent.data[2]; // velocity
+    const messageType = statusByte & 0xf0;
+    if (messageType === 0x90 && data2 > 0) { // Note On
+      // map MIDI note directly to column and simulate hit
+      simulateNoteDownFromInput(data1);
+      highlightOnScreenKey(data1, true);
+      // quickly unhighlight
+      setTimeout(() => highlightOnScreenKey(data1, false), 120);
+    } else if (messageType === 0x80 || (messageType === 0x90 && data2 === 0)) {
+      // Note Off (not strictly necessary here)
+      highlightOnScreenKey(data1, false);
+    }
+  };
+}
+
+function updateGameStatus(text) {
+  gameStatusElement.textContent = `Status: ${text}`;
+}
+
+/* -------------------------
+   DOM wiring for buttons + UI
+   ------------------------- */
+startButtonElement.addEventListener('click', () => {
+  // ensure audio context resumed from user gesture
+  audioContext.resume();
+  if (enableMidiCheckboxElement.checked) {
+    initializeWebMidiIfRequested();
+  }
+  startSongPlayback();
+});
+
+stopButtonElement.addEventListener('click', () => {
+  stopSongPlayback();
+});
+
+enableMidiCheckboxElement.addEventListener('change', () => {
+  if (enableMidiCheckboxElement.checked) {
+    initializeWebMidiIfRequested();
+  } else {
+    updateGameStatus('MIDI disabled by user.');
+  }
+});
+
+hitWindowRangeElement.addEventListener('input', () => {
+  hitWindowValueElement.textContent = hitWindowRangeElement.value;
+});
+
+/* -------------------------
+   Initialize visuals + UI on load
+   ------------------------- */
+createOnScreenKeyVisuals();
+updateScoreDisplay();
+updateGameStatus('idle - ready');
+
+/* Resize canvas to fit key columns nicely */
+function adjustCanvasSizeToKeys() {
+  const requiredWidth = 20 + numberOfVisibleKeys * (noteRectangleWidth + 6);
+  canvasElement.width = Math.max(requiredWidth, 700);
+  canvasElement.height = 500;
+}
+adjustCanvasSizeToKeys();
+
+</script>
+</body>
+</html>
