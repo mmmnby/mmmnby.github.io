@@ -9,7 +9,7 @@
       margin: 0;
       padding: 0;
       height: 100%;
-      background: linear-gradient(to bottom, #c0e0ff, #80b0ff); /* Summer Blue inspired */
+      background: linear-gradient(to bottom, #c0e0ff, #80b0ff);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -61,7 +61,7 @@
 
   <script>
     const worldMapImage = new Image();
-    worldMapImage.src = 'worldmap.jpg'; // Use a North-polar centered map for best match
+    worldMapImage.src = 'worldmap.jpg'; // North-polar centered recommended
     worldMapImage.onload = onWindowResize;
 
     const clockCanvasElement    = document.getElementById('clockCanvas');
@@ -101,7 +101,7 @@
 
     const browserUtcOffset = -new Date().getTimezoneOffset() / 60;
     let currentZoneIndex = timeZones.findIndex(z => z.offset === browserUtcOffset);
-    if (currentZoneIndex < 0) currentZoneIndex = 11; // London
+    if (currentZoneIndex < 0) currentZoneIndex = 11; // London default
 
     function onWindowResize() {
       const canvasSize = Math.min(window.innerWidth, window.innerHeight) * 0.92;
@@ -118,13 +118,12 @@
     function drawClockFace() {
       const size   = clockCanvasElement.width;
       const center = size / 2;
-      const radius = center * 0.72; // Adjusted for better ring balance
+      const radius = center * 0.72;
 
       canvasContext.setTransform(1, 0, 0, 1, 0, 0);
       canvasContext.clearRect(0, 0, size, size);
       canvasContext.translate(center, center);
 
-      // Clipped Earth/map (larger central area)
       canvasContext.save();
       canvasContext.beginPath();
       canvasContext.arc(0, 0, radius * 0.78, 0, Math.PI * 2);
@@ -136,25 +135,23 @@
 
       drawDayNightOverlay(radius * 0.78);
       drawClockBorder(radius);
-      drawHourNumbersAroundEarth(radius); // Only the inward-pointing 24h ring
-      drawCityRing(radius);               // Larger, readable city names
+      drawHourNumbersAroundEarth(radius);
+      drawCityRings(radius);
       drawHourHand(radius);
     }
 
     function drawClockBorder(radius) {
-      // Slim outer bezel-like ring
       canvasContext.beginPath();
-      canvasContext.arc(0, 0, radius * 1.08, 0, Math.PI * 2);
+      canvasContext.arc(0, 0, radius * 1.10, 0, Math.PI * 2);
       canvasContext.lineWidth = 5;
       canvasContext.strokeStyle = '#000';
       canvasContext.stroke();
 
-      // Hour ticks (24 major)
       for (let i = 0; i < 24; i++) {
         const angle = i * Math.PI / 12 - Math.PI / 2;
         canvasContext.beginPath();
         canvasContext.moveTo(Math.cos(angle) * radius * 1.02, Math.sin(angle) * radius * 1.02);
-        canvasContext.lineTo(Math.cos(angle) * radius * 1.08, Math.sin(angle) * radius * 1.08);
+        canvasContext.lineTo(Math.cos(angle) * radius * 1.10, Math.sin(angle) * radius * 1.10);
         canvasContext.lineWidth = 4;
         canvasContext.strokeStyle = '#000';
         canvasContext.stroke();
@@ -162,8 +159,8 @@
     }
 
     function drawHourNumbersAroundEarth(radius) {
-      const numRadius = radius * 0.85; // Tight ring just outside map
-      const numFontSize = radius * 0.085; // Prominent size
+      const numRadius = radius * 0.85;
+      const numFontSize = radius * 0.085;
       canvasContext.font = `bold ${numFontSize}px sans-serif`;
       canvasContext.textAlign = 'center';
       canvasContext.textBaseline = 'middle';
@@ -175,36 +172,54 @@
 
         canvasContext.save();
         canvasContext.translate(x, y);
-        canvasContext.rotate(angle + Math.PI / 2); // Tops point inward to center
+        canvasContext.rotate(angle + Math.PI / 2);
         canvasContext.fillStyle = '#000';
         canvasContext.fillText(h, 0, 0);
         canvasContext.restore();
       }
     }
 
-    function drawCityRing(radius) {
-      const cityFontSize = radius * 0.055; // Significantly larger for readability
-      canvasContext.font = `bold ${cityFontSize}px Arial, sans-serif`; // Bolder font
+    function drawCityRings(radius) {
+      const baseFontSize = radius * 0.065; // Larger for readability
       canvasContext.textAlign = 'center';
       canvasContext.textBaseline = 'middle';
 
-      const mainCityRad = radius * 1.02; // Pushed out, single main ring
-      const offsetStep = 0.015 * radius; // Small radial stagger for alternation
+      const innerCityRad = radius * 0.98;
+      const outerCityRad = radius * 1.07;
+      const letterSpacing = 1.0; // Adjust for tighter/looser kerning (pixels, approx)
 
       timeZones.forEach((zone, i) => {
-        const angle = i * Math.PI / 12 - Math.PI / 2;
-        const stagger = (i % 2 === 0) ? -offsetStep : offsetStep; // Alternate in/out slightly
-        const cityRad = mainCityRad + stagger;
+        const isInner = i % 2 === 0;
+        const cityRad = isInner ? innerCityRad : outerCityRad;
 
-        const x = cityRad * Math.cos(angle);
-        const y = cityRad * Math.sin(angle);
+        // Reversed direction: counter-clockwise progression (common worldtimer style)
+        // Start from top (0 at -Math.PI/2), but reverse sign for CCW
+        const angle = - (i * Math.PI / 12) - Math.PI / 2; // Reversed from previous CW
 
-        canvasContext.save();
-        canvasContext.translate(x, y);
-        canvasContext.rotate(angle + Math.PI / 2); // Tops point upward (outward)
-        canvasContext.fillStyle = '#111'; // Dark for contrast on blue
-        canvasContext.fillText(zone.city, 0, 0);
-        canvasContext.restore();
+        // Special fix: ensure New York (index 6) stays near correct position (~ -5 zone, right side)
+        // If reversal shifts it too far, we can offset but here reversal keeps it logical
+
+        const city = zone.city;
+
+        canvasContext.font = `bold ${baseFontSize}px Arial, sans-serif`;
+        canvasContext.fillStyle = '#111';
+
+        const chars = city.split('');
+        const totalWidthApprox = chars.length * baseFontSize * 0.6; // Rough char width
+        const arcLength = totalWidthApprox + (chars.length - 1) * letterSpacing;
+        const startAngle = angle - (arcLength / (2 * cityRad)); // Center text on angle
+
+        chars.forEach((char, j) => {
+          const charAngle = startAngle + (j * (arcLength / chars.length) / cityRad);
+          const x = cityRad * Math.cos(charAngle);
+          const y = cityRad * Math.sin(charAngle);
+
+          canvasContext.save();
+          canvasContext.translate(x, y);
+          canvasContext.rotate(charAngle + Math.PI / 2); // Tops upward/outward
+          canvasContext.fillText(char, 0, 0);
+          canvasContext.restore();
+        });
       });
     }
 
@@ -223,7 +238,7 @@
       canvasContext.lineTo(0, -handLength);
       canvasContext.lineTo(handWidth / 2, handLength * 0.15);
       canvasContext.closePath();
-      canvasContext.fillStyle = '#fff'; // White/silver like Omega hands
+      canvasContext.fillStyle = '#fff';
       canvasContext.fill();
       canvasContext.restore();
     }
@@ -236,7 +251,7 @@
       canvasContext.beginPath();
       canvasContext.arc(0, 0, mapRadius, startAngle, startAngle + Math.PI);
       canvasContext.lineTo(0, 0);
-      canvasContext.fillStyle = 'rgba(0, 0, 60, 0.45)'; // Darker navy for night side
+      canvasContext.fillStyle = 'rgba(0, 0, 60, 0.45)';
       canvasContext.fill();
     }
 
@@ -282,7 +297,7 @@
       updateLocalTime();
     });
 
-    const swipeStep = window.innerWidth / 8; // Finer control
+    const swipeStep = window.innerWidth / 8;
     let touchStartX, startIndex;
 
     timeZoneSliderElement.addEventListener('touchstart', e => {
