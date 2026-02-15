@@ -123,10 +123,10 @@
     if (currentZoneIndex < 0) currentZoneIndex = 11; // London default
 
     function onWindowResize() {
+      // Make the canvas fit nicely
       const canvasSize = Math.min(window.innerWidth, window.innerHeight) * 0.85;
-      clockCanvasElement.width  = canvasSize;
-      clockCanvasElement.height = canvasSize;
       
+      // Handle High DPI displays for crisp text
       const dpr = window.devicePixelRatio || 1;
       clockCanvasElement.style.width = canvasSize + "px";
       clockCanvasElement.style.height = canvasSize + "px";
@@ -143,6 +143,7 @@
     window.addEventListener('orientationchange', onWindowResize);
 
     function drawClockFace() {
+      // Use logical size (CSS pixels) for calculations
       const size   = parseFloat(clockCanvasElement.style.width);
       const center = size / 2;
       const radius = center * 0.95; 
@@ -162,6 +163,7 @@
       if (worldMapImage.complete && worldMapImage.naturalWidth > 0) {
         canvasContext.drawImage(worldMapImage, -mapRadius, -mapRadius, mapRadius * 2, mapRadius * 2);
       } else {
+        // Fallback if image missing
         canvasContext.fillStyle = '#a0d0ff';
         canvasContext.fill();
         canvasContext.fillStyle = '#80c0ff';
@@ -176,7 +178,7 @@
       // 3. Borders
       drawClockBorder(radius, mapRadius);
 
-      // 4. Numbers (24h) and Cities - UPDATED LOGIC HERE
+      // 4. Numbers (24h) and Cities
       drawHourNumbersAndCities(radius, mapRadius);
 
       // 5. Hour Hand (Triangle pointer)
@@ -186,6 +188,7 @@
     }
 
     function drawClockBorder(outerRadius, innerRadius) {
+      // Just a clean stroke around the map
       canvasContext.beginPath();
       canvasContext.arc(0, 0, innerRadius, 0, Math.PI * 2);
       canvasContext.lineWidth = 2;
@@ -201,28 +204,28 @@
       const numFontSize = outerRadius * 0.05;
       const cityFontSize = outerRadius * 0.055;
 
+      // Background ring radii
       const bgInnerRadius = numberRingRadius - numFontSize * 1.1;
       const bgOuterRadius = numberRingRadius + numFontSize * 1.1;
 
-      // ── LOGIC UPDATE: Calculate Discrete Hourly Rotation ──
+      // ── LOGIC: Calculate Discrete Hourly Rotation for the Number Ring ──
       // 1. Get current discrete UTC hour (0-23)
       const currentUtcHour = new Date().getUTCHours();
       
-      // 2. Calculate rotation angle.
-      // Standard static position: 12 is at top (-PI/2).
-      // If current hour is 12, rotation is 0.
-      // If current hour is 13, we rotate the ring -1 hour (CCW) so 13 hits the top.
+      // 2. Calculate rotation offset.
+      // Standard static position: 12 is at Top (-PI/2).
+      // We want 'currentUtcHour' to be at Top.
+      // Offset = -(currentUtcHour - 12) * 15 degrees
       const rotationOffset = - (currentUtcHour - 12) * (Math.PI / 12);
 
-      // ── Draw segmented background rings ──
-      // We apply the rotation to the background ring so the colors (Night/Day) move with the numbers
-      canvasContext.save();
-      canvasContext.rotate(rotationOffset); // <--- ROTATE RING
-      
-      canvasContext.lineWidth = bgOuterRadius - bgInnerRadius;
 
+      // ── 1. Draw segmented background rings (ROTATED) ──
+      canvasContext.save();
+      canvasContext.rotate(rotationOffset); // Apply offset to background ring
+
+      canvasContext.lineWidth = bgOuterRadius - bgInnerRadius;
       for (let h = 0; h < 24; h++) {
-        // Standard static angles
+        // Standard Angle: 12 is Top (-PI/2)
         const angle = (h - 12) * Math.PI / 12 - Math.PI / 2;
         const startAngle = angle - Math.PI / 24;
         const endAngle   = angle + Math.PI / 24;
@@ -235,11 +238,12 @@
         canvasContext.lineCap = 'butt';
         canvasContext.stroke();
       }
-      canvasContext.restore(); // Restore to non-rotated state for safety
+      canvasContext.restore(); // Restore context (remove rotation)
 
-      // ── Draw the numbers ──
+
+      // ── 2. Draw the numbers (ROTATED) ──
       canvasContext.save();
-      canvasContext.rotate(rotationOffset); // <--- ROTATE RING for Numbers
+      canvasContext.rotate(rotationOffset); // Apply offset to numbers
 
       canvasContext.font = `bold ${numFontSize}px sans-serif`;
       canvasContext.textAlign = 'center';
@@ -256,19 +260,21 @@
 
         canvasContext.save();
         canvasContext.translate(x, y);
-        // We rotate text so it points radially. 
-        // Note: Since we rotated the parent context, this is relative to the rotated ring.
+        // Rotate text to face center/outwards relative to the rotated ring
         canvasContext.rotate(angle + Math.PI / 2); 
         
         canvasContext.fillStyle = isDarkSegment ? '#ffffff' : '#222222';
         canvasContext.fillText(displayNumber, 0, 0);
+        
         canvasContext.restore();
       }
-      canvasContext.restore(); // End Number Ring Rotation
+      canvasContext.restore(); // Restore context (remove rotation)
 
-      // ── Draw City names (STATIC - NO ROTATION) ──
-      // These remain fixed in their original positions
+
+      // ── 3. City names (STATIC - STRICTLY PRESERVED FROM ORIGINAL) ──
+      // These do NOT rotate with the numbers. They stay fixed (London at Top).
       canvasContext.font = `600 ${cityFontSize}px sans-serif`;
+      
       const offsetAngle = (Math.PI / 2) - (Math.PI / 12); 
 
       timeZones.forEach((zone, i) => {
@@ -282,6 +288,7 @@
         canvasContext.save();
         canvasContext.translate(x, y);
 
+        // Text orientation logic from original version
         if (y < 0) {
           canvasContext.rotate(angle + Math.PI / 2);
         } else {
@@ -295,19 +302,21 @@
     }
 
     function drawHourHand(radius) {
-      // Keeps original logic (indicates sun position relative to map)
+      // Draws a small triangle pointer indicating the current UTC time relative to the map (which is fixed)
       const nowUtc = new Date();
       let utcHours = nowUtc.getUTCHours() + nowUtc.getUTCMinutes() / 60;
       
+      // UTC 12 is Top (-PI/2)
       const angle = (utcHours - 12) * (Math.PI / 12) - Math.PI / 2;
+
       const handLen = radius * 0.15;
 
       canvasContext.save();
       canvasContext.rotate(angle);
-      canvasContext.translate(radius * 1.05, 0); 
+      canvasContext.translate(radius * 1.05, 0); // Move to edge of map
       
       canvasContext.beginPath();
-      canvasContext.moveTo(0, 0); 
+      canvasContext.moveTo(0, 0); // Point
       canvasContext.lineTo(-handLen, -handLen/2);
       canvasContext.lineTo(-handLen, handLen/2);
       canvasContext.fillStyle = 'red';
@@ -318,6 +327,8 @@
     function drawDayNightOverlay(mapRadius) {
       const nowUtc = new Date();
       const h = nowUtc.getUTCHours() + nowUtc.getUTCMinutes()/60;
+      
+      // Shadow rotates continuously
       const angle = (h / 24) * Math.PI * 2; 
 
       canvasContext.save();
@@ -327,6 +338,7 @@
       canvasContext.arc(0, 0, mapRadius, 0, Math.PI); 
       canvasContext.fillStyle = 'rgba(0, 0, 50, 0.3)';
       canvasContext.fill();
+      
       canvasContext.restore();
     }
 
@@ -352,6 +364,7 @@
       const zone = timeZones[currentZoneIndex];
       const off = zone.offset;
 
+      // Calculate local time
       let locH = (utcH + off) % 24;
       if (locH < 0) locH += 24;
       
@@ -363,6 +376,7 @@
       localTimeElement.textContent = `${locHStr}:${locMStr}:${locSStr} — ${zone.city} (${offStr})`;
     }
 
+    // Interaction Handlers
     increaseZoneButton.addEventListener('click', () => {
       currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
       updateLocalTime();
@@ -373,6 +387,7 @@
       updateLocalTime();
     });
 
+    // Swipe Logic
     let touchStartX = 0;
     timeZoneSliderElement.addEventListener('touchstart', e => {
       touchStartX = e.touches[0].clientX;
@@ -383,14 +398,17 @@
       const diff = touchEndX - touchStartX;
       if (Math.abs(diff) > 50) {
         if (diff > 0) {
+           // Swipe Right -> Decrease Index
            currentZoneIndex = (currentZoneIndex - 1 + timeZones.length) % timeZones.length;
         } else {
+           // Swipe Left -> Increase Index
            currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
         }
         updateLocalTime();
       }
     }, {passive: false});
 
+    // Init
     onWindowResize();
     setInterval(() => {
       drawClockFace();
@@ -400,3 +418,4 @@
   </script>
 </body>
 </html>
+
