@@ -3,40 +3,60 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>Responsive 24-Hour Clock with Day/Night Rings – Omega-Inspired</title>
+  <title>Responsive 24-Hour World Timer</title>
   <style>
     html, body {
       margin: 0;
       padding: 0;
       height: 100%;
-      background: linear-gradient(to bottom, #e0f0ff, #a0d0ff); /* Summer Blue gradient vibe */
+      background: linear-gradient(to bottom, #e0f0ff, #a0d0ff);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      font-family: sans-serif;
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       touch-action: manipulation;
     }
     #clockCanvas { display: block; }
     #digitalClock, #localTimeContainer {
       margin-top: 0.5em;
-      font-size: 1em;
+      font-size: 1.1em;
+      font-weight: 500;
       text-align: center;
+      color: #333;
+    }
+    #zoneButtonsContainer {
+      margin-top: 10px;
     }
     #zoneButtonsContainer button {
-      font-size: 1em;
-      padding: 0.2em 0.6em;
+      font-size: 1.2em;
+      padding: 0.3em 0.8em;
       margin: 0 0.5em;
+      cursor: pointer;
+      border: 1px solid #999;
+      background: #fff;
+      border-radius: 4px;
     }
     #timeZoneSlider {
       width: 90vw;
       max-width: 500px;
       height: 2em;
-      margin: 0.5em auto;
+      margin: 1em auto;
       background: #ddd;
       border-radius: 0.25em;
       touch-action: none;
       user-select: none;
+      position: relative;
+    }
+    #timeZoneSlider::after {
+      content: 'Swipe to change zone';
+      position: absolute;
+      width: 100%;
+      text-align: center;
+      line-height: 2em;
+      color: #777;
+      font-size: 0.8em;
+      pointer-events: none;
     }
     #timeZoneSlider:active { background: #ccc; }
   </style>
@@ -60,7 +80,7 @@
 
   <script>
     const worldMapImage = new Image();
-    worldMapImage.src = 'worldmap.jpg';
+    worldMapImage.src = 'worldmap.jpg'; // Ensure this file exists
     worldMapImage.onload = onWindowResize;
 
     const clockCanvasElement    = document.getElementById('clockCanvas');
@@ -103,9 +123,19 @@
     if (currentZoneIndex < 0) currentZoneIndex = 11; // London default
 
     function onWindowResize() {
-      const canvasSize = Math.min(window.innerWidth, window.innerHeight) * 0.9;
+      // Make the canvas fit nicely
+      const canvasSize = Math.min(window.innerWidth, window.innerHeight) * 0.85;
       clockCanvasElement.width  = canvasSize;
       clockCanvasElement.height = canvasSize;
+      
+      // Handle High DPI displays for crisp text
+      const dpr = window.devicePixelRatio || 1;
+      clockCanvasElement.style.width = canvasSize + "px";
+      clockCanvasElement.style.height = canvasSize + "px";
+      clockCanvasElement.width = canvasSize * dpr;
+      clockCanvasElement.height = canvasSize * dpr;
+      canvasContext.scale(dpr, dpr);
+
       drawClockFace();
       updateDigitalClock();
       updateLocalTime();
@@ -115,152 +145,203 @@
     window.addEventListener('orientationchange', onWindowResize);
 
     function drawClockFace() {
-      const size   = clockCanvasElement.width;
+      // Use logical size (CSS pixels) for calculations
+      const size   = parseFloat(clockCanvasElement.style.width);
       const center = size / 2;
-      const radius = center * 0.68; // Slightly smaller to fit rings
+      const radius = center * 0.95; 
 
-      canvasContext.setTransform(1, 0, 0, 1, 0, 0);
       canvasContext.clearRect(0, 0, size, size);
+      
+      canvasContext.save();
       canvasContext.translate(center, center);
 
-      // Clipped world map (polar/North-centered projection ideal)
+      // 1. Draw Map (Clipped)
+      const mapRadius = radius * 0.55;
       canvasContext.save();
       canvasContext.beginPath();
-      canvasContext.arc(0, 0, radius * 0.75, 0, Math.PI * 2);
+      canvasContext.arc(0, 0, mapRadius, 0, Math.PI * 2);
       canvasContext.clip();
 
-      if (worldMapImage.complete) {
-        canvasContext.drawImage(worldMapImage, -radius * 0.75, -radius * 0.75, radius * 1.5, radius * 1.5);
+      if (worldMapImage.complete && worldMapImage.naturalWidth > 0) {
+        canvasContext.drawImage(worldMapImage, -mapRadius, -mapRadius, mapRadius * 2, mapRadius * 2);
+      } else {
+        // Fallback if image missing
+        canvasContext.fillStyle = '#a0d0ff';
+        canvasContext.fill();
+        canvasContext.fillStyle = '#80c0ff';
+        canvasContext.textAlign = 'center';
+        canvasContext.fillText("Map", 0, 0);
       }
       canvasContext.restore();
 
-      drawDayNightOverlay(radius * 0.75);
-      drawClockBorder(radius);
-      drawHourNumbersAndCities(radius); // Combined function for concentric rings
-      drawHourHand(radius);
+      // 2. Day/Night Shader
+      drawDayNightOverlay(mapRadius);
+
+      // 3. Borders
+      drawClockBorder(radius, mapRadius);
+
+      // 4. Numbers (24h) and Cities
+      drawHourNumbersAndCities(radius, mapRadius);
+
+      // 5. Hour Hand (Triangle pointer)
+      drawHourHand(mapRadius);
+      
+      canvasContext.restore();
     }
 
-    function drawClockBorder(radius) {
-      // Outer ring
+    function drawClockBorder(outerRadius, innerRadius) {
+      // Just a clean stroke around the map
       canvasContext.beginPath();
-      canvasContext.arc(0, 0, radius * 1.12, 0, Math.PI * 2);
-      canvasContext.lineWidth = 4;
-      canvasContext.strokeStyle = '#000';
+      canvasContext.arc(0, 0, innerRadius, 0, Math.PI * 2);
+      canvasContext.lineWidth = 2;
+      canvasContext.strokeStyle = '#333';
       canvasContext.stroke();
-
-      // Ticks (simplified)
-      for (let i = 0; i < 24; i++) {
-        const angle = i * Math.PI / 12 - Math.PI / 2;
-        canvasContext.beginPath();
-        canvasContext.moveTo(Math.cos(angle) * radius * 1.05, Math.sin(angle) * radius * 1.05);
-        canvasContext.lineTo(Math.cos(angle) * radius * 1.12, Math.sin(angle) * radius * 1.12);
-        canvasContext.lineWidth = 3;
-        canvasContext.strokeStyle = '#000';
-        canvasContext.stroke();
-      }
     }
 
-    function drawHourNumbersAndCities(radius) {
-      const zoneOffset = timeZones[currentZoneIndex].offset;
-
-      // Inner 24h ring around Earth (numbers tops inward → rotated toward center)
-      const numRadius = radius * 0.82;
-      const numFontSize = radius * 0.07;
+    function drawHourNumbersAndCities(outerRadius, mapRadius) {
+      // -- CONFIG --
+      const numberRingRadius = mapRadius + (outerRadius - mapRadius) * 0.15;
+      const cityRingRadius   = mapRadius + (outerRadius - mapRadius) * 0.55;
+      
+      const numFontSize = outerRadius * 0.05;
+      const cityFontSize = outerRadius * 0.055; // Larger city font
+      
+      // -- 1. 24-Hour Numbers (Inner Ring) --
       canvasContext.font = `bold ${numFontSize}px sans-serif`;
       canvasContext.textAlign = 'center';
       canvasContext.textBaseline = 'middle';
+      canvasContext.fillStyle = '#000';
 
       for (let h = 0; h < 24; h++) {
-        const angle = h * Math.PI / 12 - Math.PI / 2; // 0 at top
-        const x = numRadius * Math.cos(angle);
-        const y = numRadius * Math.sin(angle);
+        // Standard 24h dial: 0 at top (or 12 at top). 
+        // Let's put 12 at Top (noon) for standard UTC view, or 0 at top. 
+        // Standard world timers usually have 12 (Noon) at top.
+        // h=0 is midnight. 
+        const angle = (h - 12) * Math.PI / 12 - Math.PI / 2; // 12 at top
+        
+        const x = numberRingRadius * Math.cos(angle);
+        const y = numberRingRadius * Math.sin(angle);
 
         canvasContext.save();
         canvasContext.translate(x, y);
-        canvasContext.rotate(angle + Math.PI / 2); // Tops inward (point to center)
-        canvasContext.fillStyle = '#000';
+        // Rotate numbers so base points to center
+        canvasContext.rotate(angle + Math.PI / 2); 
         canvasContext.fillText(h, 0, 0);
         canvasContext.restore();
       }
 
-      // Two concentric city rings (outermost + one inner)
-      const cityFontSize = radius * 0.045;
-      canvasContext.font = `${cityFontSize}px sans-serif`;
-      canvasContext.textAlign = 'center';
-      canvasContext.textBaseline = 'middle';
-
-      const innerCityRad = radius * 1.00;
-      const outerCityRad = radius * 1.09;
+      // -- 2. City Names (Counter-Clockwise) --
+      canvasContext.font = `600 ${cityFontSize}px sans-serif`;
+      
+      // We need to calculate the rotation step.
+      // New York is index 6. 
+      // User wants New York roughly at 3 o'clock (Right side) or fixed relative to previous design.
+      // Previous design: NY was at ~3 o'clock.
+      // 24 zones. 
+      
+      // To place NY (index 6) at 3 o'clock (0 radians):
+      // angle = startAngle - (index * step)
+      // 0 = startAngle - (6 * PI/12)
+      // startAngle = PI/2.
+      
+      const offsetAngle = Math.PI / 2; 
 
       timeZones.forEach((zone, i) => {
-        const angle = i * Math.PI / 12 - Math.PI / 2;
-        const isInner = i % 2 === 0; // Alternate inner/outer
-        const cityRad = isInner ? innerCityRad : outerCityRad;
+        // Counter Clockwise: Subtract index from offset
+        const angle = offsetAngle - (i * (Math.PI / 12));
+        
+        // Calculate position
+        // Alternate radius slightly to prevent overlap if names are long, 
+        // but user asked for "kerning among circle", implying a cleaner ring.
+        // With larger text, we might need a slight zigzag or just one ring.
+        // Let's try one ring first as it looks cleaner, if they fit.
+        // If crowded, we stagger.
+        const stagger = (i % 2 === 0) ? 0 : (outerRadius * 0.08);
+        const r = cityRingRadius + stagger;
 
-        const x = cityRad * Math.cos(angle);
-        const y = cityRad * Math.sin(angle);
+        const x = r * Math.cos(angle);
+        const y = r * Math.sin(angle);
 
         canvasContext.save();
         canvasContext.translate(x, y);
-        canvasContext.rotate(angle + Math.PI / 2); // Tops upward (radial out)
-        canvasContext.fillStyle = '#333';
+
+        // -- LEGIBILITY LOGIC --
+        // Check if we are in the Top Half or Bottom Half
+        // Canvas Y is positive down.
+        // y < 0 is Top Half. y > 0 is Bottom Half.
+        
+        if (y < 0) {
+            // TOP HALF: Tops point OUTWARD.
+            // Standard text rotation matches the tangent + 90deg.
+            // angle + PI/2 creates text standing on the circle (base to center).
+            canvasContext.rotate(angle + Math.PI / 2);
+        } else {
+            // BOTTOM HALF: Tops point INWARD.
+            // We need to flip the text 180deg relative to the top logic.
+            // angle - PI/2 makes the top point to center.
+            canvasContext.rotate(angle - Math.PI / 2);
+        }
+
+        canvasContext.fillStyle = '#222';
         canvasContext.fillText(zone.city, 0, 0);
         canvasContext.restore();
       });
-
-      // Existing UTC / local hour labels (adapted)
-      const innerRingRad = radius * 0.90;
-      const outerRingRad = radius * 1.18;
-      for (let utcHour = 0; utcHour < 24; utcHour++) {
-        const angle = utcHour * Math.PI / 12 - Math.PI / 2;
-        const localHour = (utcHour + zoneOffset + 24) % 24;
-
-        // UTC inner
-        let x = innerRingRad * Math.cos(angle);
-        let y = innerRingRad * Math.sin(angle);
-        canvasContext.fillStyle = '#000';
-        canvasContext.font = `${numFontSize * 0.9}px sans-serif`;
-        canvasContext.fillText(utcHour, x, y);
-
-        // Local outer (colored special hours)
-        x = outerRingRad * Math.cos(angle);
-        y = outerRingRad * Math.sin(angle);
-        canvasContext.fillStyle = (localHour === 12) ? 'red' : 
-                                 ([0,6,18].includes(localHour)) ? 'blue' : '#000';
-        canvasContext.fillText(localHour, x, y);
-      }
     }
 
     function drawHourHand(radius) {
+      // Draws a small triangle pointer indicating the current UTC time on the inner ring
       const nowUtc = new Date();
-      const fractionOfDay = (nowUtc.getUTCHours() + nowUtc.getUTCMinutes() / 60) / 24;
-      const angle = fractionOfDay * Math.PI * 2 - Math.PI;
+      // UTC time as fraction
+      let utcHours = nowUtc.getUTCHours() + nowUtc.getUTCMinutes() / 60;
+      
+      // Map 24h to angle. In our loop above: 12 is at -PI/2 (Top).
+      // So 12 = -90deg. 
+      // angle = (h - 12) * PI/12 - PI/2
+      const angle = (utcHours - 12) * (Math.PI / 12) - Math.PI / 2;
 
-      const handLength = radius * 0.68;
-      const handWidth = radius * 0.07;
+      const handLen = radius * 0.15;
 
       canvasContext.save();
       canvasContext.rotate(angle);
+      canvasContext.translate(radius * 1.05, 0); // Move to edge of map
+      
       canvasContext.beginPath();
-      canvasContext.moveTo(-handWidth / 2, handLength * 0.2);
-      canvasContext.lineTo(0, -handLength);
-      canvasContext.lineTo(handWidth / 2, handLength * 0.2);
-      canvasContext.closePath();
-      canvasContext.fillStyle = '#000';
+      canvasContext.moveTo(0, 0); // Point
+      canvasContext.lineTo(-handLen, -handLen/2);
+      canvasContext.lineTo(-handLen, handLen/2);
+      canvasContext.fillStyle = 'red';
       canvasContext.fill();
       canvasContext.restore();
     }
 
     function drawDayNightOverlay(mapRadius) {
+      // Basic visualization of where it is currently night
+      // Noon (Sun) is at top? No, usually Noon is fixed or rotating.
+      // Since map is static North-up, the shadow rotates.
+      // UTC 12:00 = Sun over Greenwich (roughly).
+      
       const nowUtc = new Date();
-      const fraction = (nowUtc.getUTCHours() + nowUtc.getUTCMinutes() / 60) / 24;
-      const startAngle = fraction * Math.PI * 2 + Math.PI;
+      const h = nowUtc.getUTCHours() + nowUtc.getUTCMinutes()/60;
+      
+      // Sun position rotates 15 deg/hour.
+      // At UTC 12, Sun is at 0 longitude (Greenwich).
+      // If Map is centered on North Pole, 0 lat is usually down or up?
+      // Assuming standard image projection where UK is top-ish/center.
+      
+      // Simplified: Just rotate the shadow based on time.
+      // 12 UTC = Day at Top. Night at Bottom.
+      const angle = (h / 24) * Math.PI * 2; // 0..2PI
 
+      canvasContext.save();
+      canvasContext.rotate(angle + Math.PI); // Rotate the "Night" part
+      
       canvasContext.beginPath();
-      canvasContext.arc(0, 0, mapRadius, startAngle, startAngle + Math.PI);
-      canvasContext.lineTo(0, 0);
-      canvasContext.fillStyle = 'rgba(0, 0, 80, 0.4)'; // Darker blue night
+      // Draw a semi-circle for night
+      canvasContext.arc(0, 0, mapRadius, 0, Math.PI); 
+      canvasContext.fillStyle = 'rgba(0, 0, 50, 0.3)';
       canvasContext.fill();
+      
+      canvasContext.restore();
     }
 
     function updateDigitalClock() {
@@ -268,7 +349,7 @@
       const h = String(now.getUTCHours()).padStart(2, '0');
       const m = String(now.getUTCMinutes()).padStart(2, '0');
       const s = String(now.getUTCSeconds()).padStart(2, '0');
-      digitalClockElement.textContent = `${h}:${m}:${s} UTC`;
+      digitalClockElement.textContent = `UTC: ${h}:${m}:${s}`;
     }
 
     function formatUtcOffset(offset) {
@@ -281,52 +362,55 @@
       const utcH = now.getUTCHours();
       const utcM = now.getUTCMinutes();
       const utcS = now.getUTCSeconds();
-      const off = timeZones[currentZoneIndex].offset;
+      
+      const zone = timeZones[currentZoneIndex];
+      const off = zone.offset;
 
-      const locH = String((utcH + off + 24) % 24).padStart(2, '0');
-      const locM = String(utcM).padStart(2, '0');
-      const locS = String(utcS).padStart(2, '0');
+      // Calculate local time
+      let locH = (utcH + off) % 24;
+      if (locH < 0) locH += 24;
+      
+      const locHStr = String(Math.floor(locH)).padStart(2, '0');
+      const locMStr = String(utcM).padStart(2, '0');
+      const locSStr = String(utcS).padStart(2, '0');
 
-      const city = timeZones[currentZoneIndex].city;
       const offStr = formatUtcOffset(off);
-
-      localTimeElement.textContent = `${locH}:${locM}:${locS} ${city} (${offStr})`;
+      localTimeElement.textContent = `${locHStr}:${locMStr}:${locSStr} — ${zone.city} (${offStr})`;
     }
 
+    // Interaction Handlers
     increaseZoneButton.addEventListener('click', () => {
       currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
-      drawClockFace();
       updateLocalTime();
     });
 
     decreaseZoneButton.addEventListener('click', () => {
       currentZoneIndex = (currentZoneIndex - 1 + timeZones.length) % timeZones.length;
-      drawClockFace();
       updateLocalTime();
     });
 
-    // Swipe on slider
-    const swipeStep = window.innerWidth / 7;
-    let touchStartX, startIndex;
-
+    // Swipe Logic
+    let touchStartX = 0;
     timeZoneSliderElement.addEventListener('touchstart', e => {
-      e.preventDefault();
       touchStartX = e.touches[0].clientX;
-      startIndex = currentZoneIndex;
-    });
+    }, {passive: false});
 
-    timeZoneSliderElement.addEventListener('touchmove', e => {
-      e.preventDefault();
-      const dx = e.touches[0].clientX - touchStartX;
-      const delta = Math.round(dx / swipeStep);
-      const newIdx = (startIndex + delta + timeZones.length) % timeZones.length;
-      if (newIdx !== currentZoneIndex) {
-        currentZoneIndex = newIdx;
-        drawClockFace();
+    timeZoneSliderElement.addEventListener('touchend', e => {
+      const touchEndX = e.changedTouches[0].clientX;
+      const diff = touchEndX - touchStartX;
+      if (Math.abs(diff) > 50) {
+        if (diff > 0) {
+           // Swipe Right -> Decrease Index
+           currentZoneIndex = (currentZoneIndex - 1 + timeZones.length) % timeZones.length;
+        } else {
+           // Swipe Left -> Increase Index
+           currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
+        }
         updateLocalTime();
       }
-    });
+    }, {passive: false});
 
+    // Init
     onWindowResize();
     setInterval(() => {
       drawClockFace();
@@ -336,3 +420,4 @@
   </script>
 </body>
 </html>
+
