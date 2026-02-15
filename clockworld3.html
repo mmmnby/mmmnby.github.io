@@ -200,27 +200,45 @@
         canvasContext.font = `bold ${baseFontSize}px Arial, sans-serif`;
         canvasContext.fillStyle = '#111';
 
-        const chars = city.split('');
+        let chars = city.split('');
         const totalWidthApprox = chars.length * baseFontSize * 0.6;
         const arcLength = totalWidthApprox + (chars.length - 1) * letterSpacing;
-        const startAngle = angle - (arcLength / (2 * cityRad));
 
-        // Determine if upper or lower half → decide text direction
-        // Sample a point on the arc to get approximate y
+        // Sample position to determine half
         const sampleX = cityRad * Math.cos(angle);
         const sampleY = cityRad * Math.sin(angle);
-        const isUpperHalf = sampleY < 0; // canvas y increases downward
+        const isUpperHalf = sampleY < 0;
+
+        let mirror = !isUpperHalf; // bottom half = mirror left-to-right
+
+        if (mirror) {
+          chars = chars.reverse(); // reverse letter order for mirror effect
+        }
+
+        const startAngle = angle - (arcLength / (2 * cityRad));
 
         chars.forEach((char, j) => {
-          const charAngle = startAngle + (j * (arcLength / chars.length) / cityRad);
+          let charAngle = startAngle + (j * (arcLength / chars.length) / cityRad);
+
+          if (mirror) {
+            // For mirrored text, flip each character's rotation by 180°
+            charAngle += Math.PI;
+          }
+
           const x = cityRad * Math.cos(charAngle);
           const y = cityRad * Math.sin(charAngle);
 
           canvasContext.save();
           canvasContext.translate(x, y);
-          // Upper half: tops outward (+π/2)
-          // Lower half: tops inward (-π/2)
-          const rotation = isUpperHalf ? (charAngle + Math.PI / 2) : (charAngle - Math.PI / 2);
+
+          let rotation = isUpperHalf 
+            ? (charAngle + Math.PI / 2)           // upper: tops outward
+            : (charAngle - Math.PI / 2);           // lower: tops inward
+
+          if (mirror) {
+            rotation += Math.PI; // additional 180° flip for mirror appearance
+          }
+
           canvasContext.rotate(rotation);
           canvasContext.fillText(char, 0, 0);
           canvasContext.restore();
