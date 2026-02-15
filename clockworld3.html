@@ -242,9 +242,9 @@
       // To place NY (index 6) at 3 o'clock (0 radians):
       // angle = startAngle - (index * step)
       // 0 = startAngle - (6 * PI/12)
-      // startAngle = PI/2.
+      // startAngle = PI/2. added - (Math.PI / 12) to correct new New York to index 5 positio
       
-      const offsetAngle = Math.PI / 2; 
+      const offsetAngle = (Math.PI / 2) - (Math.PI / 12); 
 
       timeZones.forEach((zone, i) => {
         // Counter Clockwise: Subtract index from offset
