@@ -80,7 +80,7 @@
 
   <script>
     const worldMapImage = new Image();
-    worldMapImage.src = 'worldmap.jpg'; // Ensure this file exists
+    worldMapImage.src = 'worldmap.jpg'; 
     worldMapImage.onload = onWindowResize;
 
     const clockCanvasElement    = document.getElementById('clockCanvas');
@@ -120,13 +120,10 @@
 
     const browserUtcOffset = -new Date().getTimezoneOffset() / 60;
     let currentZoneIndex = timeZones.findIndex(z => z.offset === browserUtcOffset);
-    if (currentZoneIndex < 0) currentZoneIndex = 11; // London default
+    if (currentZoneIndex < 0) currentZoneIndex = 11; 
 
     function onWindowResize() {
-      // Make the canvas fit nicely
       const canvasSize = Math.min(window.innerWidth, window.innerHeight) * 0.85;
-      
-      // Handle High DPI displays for crisp text
       const dpr = window.devicePixelRatio || 1;
       clockCanvasElement.style.width = canvasSize + "px";
       clockCanvasElement.style.height = canvasSize + "px";
@@ -143,7 +140,6 @@
     window.addEventListener('orientationchange', onWindowResize);
 
     function drawClockFace() {
-      // Use logical size (CSS pixels) for calculations
       const size   = parseFloat(clockCanvasElement.style.width);
       const center = size / 2;
       const radius = center * 0.95; 
@@ -153,7 +149,6 @@
       canvasContext.save();
       canvasContext.translate(center, center);
 
-      // 1. Draw Map (Clipped)
       const mapRadius = radius * 0.55;
       canvasContext.save();
       canvasContext.beginPath();
@@ -163,32 +158,20 @@
       if (worldMapImage.complete && worldMapImage.naturalWidth > 0) {
         canvasContext.drawImage(worldMapImage, -mapRadius, -mapRadius, mapRadius * 2, mapRadius * 2);
       } else {
-        // Fallback if image missing
         canvasContext.fillStyle = '#a0d0ff';
         canvasContext.fill();
-        canvasContext.fillStyle = '#80c0ff';
-        canvasContext.textAlign = 'center';
-        canvasContext.fillText("Map", 0, 0);
       }
       canvasContext.restore();
 
-      // 2. Day/Night Shader
       drawDayNightOverlay(mapRadius);
-
-      // 3. Borders
       drawClockBorder(radius, mapRadius);
-
-      // 4. Numbers (24h) and Cities
       drawHourNumbersAndCities(radius, mapRadius);
-
-      // 5. Hour Hand (Triangle pointer)
       drawHourHand(mapRadius);
       
       canvasContext.restore();
     }
 
     function drawClockBorder(outerRadius, innerRadius) {
-      // Just a clean stroke around the map
       canvasContext.beginPath();
       canvasContext.arc(0, 0, innerRadius, 0, Math.PI * 2);
       canvasContext.lineWidth = 2;
@@ -197,36 +180,24 @@
     }
 
     function drawHourNumbersAndCities(outerRadius, mapRadius) {
-      // -- CONFIG --
       const numberRingRadius = mapRadius + (outerRadius - mapRadius) * 0.15;
       const cityRingRadius   = mapRadius + (outerRadius - mapRadius) * 0.55;
-      
       const numFontSize = outerRadius * 0.05;
       const cityFontSize = outerRadius * 0.055;
-
-      // Background ring radii
       const bgInnerRadius = numberRingRadius - numFontSize * 1.1;
       const bgOuterRadius = numberRingRadius + numFontSize * 1.1;
 
-      // ── LOGIC: Calculate Discrete Hourly Rotation for the Number Ring ──
-      // 1. Get current discrete UTC hour (0-23)
-      const currentUtcHour = new Date().getUTCHours();
-      
-      // 2. Calculate rotation offset.
-      // Standard static position: 12 is at Top (-PI/2).
-      // We want 'currentUtcHour' to be at Top.
-      // Offset = -(currentUtcHour - 12) * 15 degrees
-      const rotationOffset = - (currentUtcHour - 12) * (Math.PI / 12);
+      // ── NEW LOGIC: Calculate discrete UTC offset ──
+      const now = new Date();
+      const currentUtcHour = now.getUTCHours(); 
 
-
-      // ── 1. Draw segmented background rings (ROTATED) ──
+      // ── Draw segmented background rings (ROTATING) ──
       canvasContext.save();
-      canvasContext.rotate(rotationOffset); // Apply offset to background ring
-
       canvasContext.lineWidth = bgOuterRadius - bgInnerRadius;
+
       for (let h = 0; h < 24; h++) {
-        // Standard Angle: 12 is Top (-PI/2)
-        const angle = (h - 12) * Math.PI / 12 - Math.PI / 2;
+        // Offset the angle so currentUtcHour is at -PI/2 (Top)
+        const angle = ((h - currentUtcHour) * Math.PI / 12) - Math.PI / 2;
         const startAngle = angle - Math.PI / 24;
         const endAngle   = angle + Math.PI / 24;
 
@@ -234,47 +205,34 @@
 
         canvasContext.beginPath();
         canvasContext.arc(0, 0, numberRingRadius, startAngle, endAngle);
-        canvasContext.strokeStyle = isDarkSegment ? '#1e1e1e' : '#f0f0f0'; 
-        canvasContext.lineCap = 'butt';
+        canvasContext.strokeStyle = isDarkSegment ? '#1e1e1e' : '#f0f0f0';
         canvasContext.stroke();
       }
-      canvasContext.restore(); // Restore context (remove rotation)
+      canvasContext.restore();
 
-
-      // ── 2. Draw the numbers (ROTATED) ──
-      canvasContext.save();
-      canvasContext.rotate(rotationOffset); // Apply offset to numbers
-
+      // ── Draw the numbers (ROTATING) ──
       canvasContext.font = `bold ${numFontSize}px sans-serif`;
       canvasContext.textAlign = 'center';
       canvasContext.textBaseline = 'middle';
 
       for (let h = 0; h < 24; h++) {
-        const displayNumber = h === 0 ? 24 : h; 
-        const angle = (h - 12) * Math.PI / 12 - Math.PI / 2;
+        const displayNumber = h === 0 ? 24 : h;
+        const angle = ((h - currentUtcHour) * Math.PI / 12) - Math.PI / 2;
         
         const x = numberRingRadius * Math.cos(angle);
         const y = numberRingRadius * Math.sin(angle);
-
         const isDarkSegment = (h >= 19 || h <= 6);
 
         canvasContext.save();
         canvasContext.translate(x, y);
-        // Rotate text to face center/outwards relative to the rotated ring
         canvasContext.rotate(angle + Math.PI / 2); 
-        
         canvasContext.fillStyle = isDarkSegment ? '#ffffff' : '#222222';
         canvasContext.fillText(displayNumber, 0, 0);
-        
         canvasContext.restore();
       }
-      canvasContext.restore(); // Restore context (remove rotation)
 
-
-      // ── 3. City names (STATIC - STRICTLY PRESERVED FROM ORIGINAL) ──
-      // These do NOT rotate with the numbers. They stay fixed (London at Top).
+      // ── City names (STATIC - UNCHANGED) ──
       canvasContext.font = `600 ${cityFontSize}px sans-serif`;
-      
       const offsetAngle = (Math.PI / 2) - (Math.PI / 12); 
 
       timeZones.forEach((zone, i) => {
@@ -287,14 +245,11 @@
 
         canvasContext.save();
         canvasContext.translate(x, y);
-
-        // Text orientation logic from original version
         if (y < 0) {
           canvasContext.rotate(angle + Math.PI / 2);
         } else {
           canvasContext.rotate(angle - Math.PI / 2);
         }
-
         canvasContext.fillStyle = '#222';
         canvasContext.fillText(zone.city, 0, 0);
         canvasContext.restore();
@@ -302,21 +257,18 @@
     }
 
     function drawHourHand(radius) {
-      // Draws a small triangle pointer indicating the current UTC time relative to the map (which is fixed)
       const nowUtc = new Date();
       let utcHours = nowUtc.getUTCHours() + nowUtc.getUTCMinutes() / 60;
-      
-      // UTC 12 is Top (-PI/2)
-      const angle = (utcHours - 12) * (Math.PI / 12) - Math.PI / 2;
+      // Since UTC hour is now always at the top, the pointer remains at the top
+      // But to maintain the logic of pointing at the current minute/fraction:
+      const angle = -Math.PI / 2 + (nowUtc.getUTCMinutes() / 60) * (Math.PI / 12);
 
       const handLen = radius * 0.15;
-
       canvasContext.save();
       canvasContext.rotate(angle);
-      canvasContext.translate(radius * 1.05, 0); // Move to edge of map
-      
+      canvasContext.translate(radius * 1.05, 0); 
       canvasContext.beginPath();
-      canvasContext.moveTo(0, 0); // Point
+      canvasContext.moveTo(0, 0);
       canvasContext.lineTo(-handLen, -handLen/2);
       canvasContext.lineTo(-handLen, handLen/2);
       canvasContext.fillStyle = 'red';
@@ -327,18 +279,14 @@
     function drawDayNightOverlay(mapRadius) {
       const nowUtc = new Date();
       const h = nowUtc.getUTCHours() + nowUtc.getUTCMinutes()/60;
-      
-      // Shadow rotates continuously
       const angle = (h / 24) * Math.PI * 2; 
 
       canvasContext.save();
       canvasContext.rotate(angle + Math.PI); 
-      
       canvasContext.beginPath();
       canvasContext.arc(0, 0, mapRadius, 0, Math.PI); 
       canvasContext.fillStyle = 'rgba(0, 0, 50, 0.3)';
       canvasContext.fill();
-      
       canvasContext.restore();
     }
 
@@ -360,23 +308,19 @@
       const utcH = now.getUTCHours();
       const utcM = now.getUTCMinutes();
       const utcS = now.getUTCSeconds();
-      
       const zone = timeZones[currentZoneIndex];
       const off = zone.offset;
 
-      // Calculate local time
       let locH = (utcH + off) % 24;
       if (locH < 0) locH += 24;
       
       const locHStr = String(Math.floor(locH)).padStart(2, '0');
       const locMStr = String(utcM).padStart(2, '0');
       const locSStr = String(utcS).padStart(2, '0');
-
       const offStr = formatUtcOffset(off);
       localTimeElement.textContent = `${locHStr}:${locMStr}:${locSStr} — ${zone.city} (${offStr})`;
     }
 
-    // Interaction Handlers
     increaseZoneButton.addEventListener('click', () => {
       currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
       updateLocalTime();
@@ -387,7 +331,6 @@
       updateLocalTime();
     });
 
-    // Swipe Logic
     let touchStartX = 0;
     timeZoneSliderElement.addEventListener('touchstart', e => {
       touchStartX = e.touches[0].clientX;
@@ -398,17 +341,14 @@
       const diff = touchEndX - touchStartX;
       if (Math.abs(diff) > 50) {
         if (diff > 0) {
-           // Swipe Right -> Decrease Index
            currentZoneIndex = (currentZoneIndex - 1 + timeZones.length) % timeZones.length;
         } else {
-           // Swipe Left -> Increase Index
            currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
         }
         updateLocalTime();
       }
     }, {passive: false});
 
-    // Init
     onWindowResize();
     setInterval(() => {
       drawClockFace();
@@ -418,4 +358,5 @@
   </script>
 </body>
 </html>
+
 
