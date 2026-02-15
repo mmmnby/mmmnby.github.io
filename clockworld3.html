@@ -204,107 +204,104 @@
       }
     }
 
-    function drawHourNumbersAndCities(outerRadius, mapRadius) {
-      const numberRingRadius = mapRadius + (outerRadius - mapRadius) * 0.20;
-      const cityRingRadius   = mapRadius + (outerRadius - mapRadius) * 0.60;
-      const numFontSize = outerRadius * 0.05;
-      const cityFontSize = outerRadius * 0.055;
-      const bgInnerRadius = numberRingRadius - numFontSize * 1.1;
-      const bgOuterRadius = numberRingRadius + numFontSize * 1.1;
+function drawHourNumbersAndCities(outerRadius, mapRadius) {
+  const numberRingRadius = mapRadius + (outerRadius - mapRadius) * 0.20;
+  const cityRingRadius   = mapRadius + (outerRadius - mapRadius) * 0.60;
+  const numFontSize = outerRadius * 0.05;
+  const cityFontSize = outerRadius * 0.055;
+  const bgInnerRadius = numberRingRadius - numFontSize * 1.1;
+  const bgOuterRadius = numberRingRadius + numFontSize * 1.1;
 
-      const now = new Date();
-      const currentUtcHour = now.getUTCHours(); 
+  // Use the fixed mapping requested: 12 top, 18 right, 0 bottom
+  canvasContext.save();
+  for (let h = 0; h < 24; h++) {
+    const angle = (h - 18) * (Math.PI / 12);
+    const startAngle = angle - Math.PI / 24;
+    const endAngle   = angle + Math.PI / 24;
 
-      canvasContext.save();
-      canvasContext.lineWidth = bgOuterRadius - bgInnerRadius;
+    // Standard Day (6-18) / Night (19-5) coloring
+    let isDarkSegment = (h >= 19 || h <= 6); 
 
-      for (let h = 0; h < 24; h++) {
-        const angle = ((currentUtcHour - h) * Math.PI / 12) - Math.PI / 2;
-        const startAngle = angle - Math.PI / 24;
-        const endAngle   = angle + Math.PI / 24;
+    canvasContext.beginPath();
+    canvasContext.arc(0, 0, numberRingRadius, startAngle, endAngle);
+    canvasContext.lineWidth = bgOuterRadius - bgInnerRadius;
+    canvasContext.strokeStyle = isDarkSegment ? '#1e1e1e' : '#f0f0f0';
+    canvasContext.stroke();
 
-        let isDarkSegment = (h >= 19 || h <= 6); 
+    // Draw Numbers
+    const x = numberRingRadius * Math.cos(angle);
+    const y = numberRingRadius * Math.sin(angle);
+    
+    canvasContext.save();
+    canvasContext.translate(x, y);
+    canvasContext.rotate(angle + Math.PI / 2); // Keep numbers upright relative to center
+    canvasContext.font = `bold ${numFontSize}px sans-serif`;
+    canvasContext.textAlign = 'center';
+    canvasContext.textBaseline = 'middle';
+    canvasContext.fillStyle = isDarkSegment ? '#ffffff' : '#222222';
+    canvasContext.fillText(h === 0 ? "0" : h, 0, 0);
+    canvasContext.restore();
+  }
+  canvasContext.restore();
 
-        canvasContext.beginPath();
-        canvasContext.arc(0, 0, numberRingRadius, startAngle, endAngle);
-        canvasContext.strokeStyle = isDarkSegment ? '#1e1e1e' : '#f0f0f0';
-        canvasContext.stroke();
-      }
-      canvasContext.restore();
+  // Draw Cities relative to their actual current time on this fixed dial
+  const now = new Date();
+  const utcHoursFloat = now.getUTCHours() + now.getUTCMinutes() / 60;
 
-      canvasContext.font = `bold ${numFontSize}px sans-serif`;
-      canvasContext.textAlign = 'center';
-      canvasContext.textBaseline = 'middle';
+  timeZones.forEach((zone, i) => {
+    const localHour = (utcHoursFloat + zone.offset + 24) % 24;
+    const angle = (localHour - 18) * (Math.PI / 12);
+    const stagger = (i % 2 === 0) ? 0 : (outerRadius * 0.08);
+    const r = cityRingRadius + stagger;
 
-      for (let h = 0; h < 24; h++) {
-        const displayNumber = h === 0 ? 24 : h;
-        const angle = ((currentUtcHour - h) * Math.PI / 12) - Math.PI / 2;
-        
-        const x = numberRingRadius * Math.cos(angle);
-        const y = numberRingRadius * Math.sin(angle);
-        const isDarkSegment = (h >= 19 || h <= 6);
+    const x = r * Math.cos(angle);
+    const y = r * Math.sin(angle);
 
-        canvasContext.save();
-        canvasContext.translate(x, y);
-        canvasContext.rotate(angle - Math.PI / 2); 
-        canvasContext.fillStyle = isDarkSegment ? '#ffffff' : '#222222';
-        canvasContext.fillText(displayNumber, 0, 0);
-        canvasContext.restore();
-      }
+    canvasContext.save();
+    canvasContext.translate(x, y);
+    // Orient text to be readable
+    const rotation = (angle > 0 && angle < Math.PI) ? angle - Math.PI/2 : angle + Math.PI/2;
+    canvasContext.rotate(rotation);
+    canvasContext.font = `600 ${cityFontSize}px sans-serif`;
+    canvasContext.fillStyle = '#222';
+    canvasContext.textAlign = 'center';
+    canvasContext.fillText(zone.city, 0, 0);
+    canvasContext.restore();
+  });
+}
 
-      canvasContext.font = `600 ${cityFontSize}px sans-serif`;
-      const offsetAngle = - (Math.PI / 2); 
+function drawLocalTimePointer(radius) {
+  const now = new Date();
+  // Get high-precision local time
+  const localHoursFloat = now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
+  
+  // Angle math: (Current Hour - 18) * (PI / 12)
+  const angle = (localHoursFloat - 18) * (Math.PI / 12);
 
-      timeZones.forEach((zone, i) => {
-        const angle = offsetAngle - (zone.offset * (Math.PI / 12));
-        const stagger = (i % 2 === 0) ? 0 : (outerRadius * 0.08);
-        const r = cityRingRadius + stagger;
+  const pointerSize = radius * 0.06;
+  canvasContext.save();
+  canvasContext.rotate(angle);
+  
+  // Move to the outer tick ring
+  canvasContext.translate(radius, 0); 
+  
+  // Draw a downward pointing triangle that overlays the ring
+  canvasContext.beginPath();
+  canvasContext.moveTo(0, 0); // Tip touches the ring center
+  canvasContext.lineTo(pointerSize, -pointerSize / 1.5);
+  canvasContext.lineTo(pointerSize, pointerSize / 1.5);
+  canvasContext.closePath();
+  
+  canvasContext.fillStyle = 'red';
+  canvasContext.strokeStyle = 'white';
+  canvasContext.lineWidth = 1;
+  canvasContext.shadowBlur = 5;
+  canvasContext.shadowColor = 'rgba(0,0,0,0.5)';
+  canvasContext.fill();
+  canvasContext.stroke();
+  canvasContext.restore();
+}
 
-        const x = r * Math.cos(angle);
-        const y = r * Math.sin(angle);
-
-        canvasContext.save();
-        canvasContext.translate(x, y);
-        if (y < 0) {
-          canvasContext.rotate(angle + Math.PI / 2);
-        } else {
-          canvasContext.rotate(angle - Math.PI / 2);
-        }
-        canvasContext.fillStyle = '#222';
-        canvasContext.fillText(zone.city, 0, 0);
-        canvasContext.restore();
-      });
-    }
-
-    // UPDATED: Points to local time on the outer ring, pointing inward
-    function drawLocalTimePointer(radius) {
-      const now = new Date();
-      const currentUtcHour = now.getUTCHours();
-      const localHoursFloat = now.getHours() + now.getMinutes() / 60;
-      
-      // Calculate angle based on the dynamic rotation of the clock face
-      // Since UTC is always at the top (-PI/2), the pointer must find the 
-      // current local hour relative to the rotating dial.
-      const angle = ((currentUtcHour - localHoursFloat) * Math.PI / 12) - Math.PI / 2;
-
-      const handLen = radius * 0.12;
-      canvasContext.save();
-      canvasContext.rotate(angle);
-      // Start slightly outside the ring and point toward the center
-      canvasContext.translate(radius + (handLen * 0.2), 0); 
-      
-      canvasContext.beginPath();
-      canvasContext.moveTo(0, 0); // Tip starts at the outer ring (translated)
-      canvasContext.lineTo(handLen, -handLen/2.5);
-      canvasContext.lineTo(handLen, handLen/2.5);
-      canvasContext.closePath();
-      
-      canvasContext.fillStyle = 'red';
-      canvasContext.shadowBlur = 4;
-      canvasContext.shadowColor = 'rgba(0,0,0,0.3)';
-      canvasContext.fill();
-      canvasContext.restore();
-    }
 
     function drawDayNightOverlay(mapRadius) {
       const nowUtc = new Date();
