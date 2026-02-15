@@ -192,63 +192,58 @@
       const numFontSize  = outerRadius * 0.05;
       const cityFontSize = outerRadius * 0.055;
 
-      // ───────────────────────────────────────────────
-      // 1. 24-Hour Numbers – tips pointing INWARD
-      // ───────────────────────────────────────────────
+      // ──────────────── INNER RING ── 24-hour numbers ────────────────
       canvasContext.font = `bold ${numFontSize}px sans-serif`;
       canvasContext.textAlign = 'center';
       canvasContext.textBaseline = 'middle';
       canvasContext.fillStyle = '#000';
 
       for (let h = 0; h < 24; h++) {
-        const angle = (h - 12) * Math.PI / 12 - Math.PI / 2; // 12 at top
+        // 0 = midnight at top → London midnight = top
+        const angle = h * (Math.PI / 12) - Math.PI / 2;   // 0 at top
 
         const x = numberRingRadius * Math.cos(angle);
         const y = numberRingRadius * Math.sin(angle);
 
         canvasContext.save();
         canvasContext.translate(x, y);
-        // Numbers point inward → rotate opposite direction compared to before
+        
+        // Numbers point INWARD → rotate so bottom of text faces center
         canvasContext.rotate(angle - Math.PI / 2);
+        
         canvasContext.fillText(h, 0, 0);
         canvasContext.restore();
       }
 
-      // ───────────────────────────────────────────────
-      // 2. City Names – rotated one step counter-clockwise
-      // ───────────────────────────────────────────────
+      // ──────────────── OUTER RING ── City names (one step CCW) ────────────────
       canvasContext.font = `600 ${cityFontSize}px sans-serif`;
-      
-      const offsetAngle = Math.PI / 2; 
-      const step = Math.PI / 12;
+
+      // London (index 11) should be at top → angle = -90°
+      // One step counter-clockwise shift = subtract one more position
+      const baseAngle = -Math.PI / 2;           // top
+      const step      = Math.PI / 12;
 
       timeZones.forEach((zone, i) => {
-        // Shift indices by +1 (mod 24) → cities move counter-clockwise one step
-        const shiftedIndex = (i + 1) % timeZones.length;
-        const zoneToShow = timeZones[shiftedIndex];
+        // Shift -1 position (counter-clockwise)
+        const idx = (i - 1 + timeZones.length) % timeZones.length;
+        const angle = baseAngle - (idx * step);
 
-        // Counter-clockwise placement
-        const angle = offsetAngle - (i * step);
-        
-        const stagger = (i % 2 === 0) ? 0 : (outerRadius * 0.08);
-        const r = cityRingRadius + stagger;
-
-        const x = r * Math.cos(angle);
-        const y = r * Math.sin(angle);
+        const x = cityRingRadius * Math.cos(angle);
+        const y = cityRingRadius * Math.sin(angle);
 
         canvasContext.save();
         canvasContext.translate(x, y);
 
+        // Bottom half: text upside-down (tops point inward)
+        // Top half:   right-side-up (tops point outward)
         if (y < 0) {
-          // Top half: base toward center (tips outward)
           canvasContext.rotate(angle + Math.PI / 2);
         } else {
-          // Bottom half: base away from center (tips inward)
           canvasContext.rotate(angle - Math.PI / 2);
         }
 
         canvasContext.fillStyle = '#222';
-        canvasContext.fillText(zoneToShow.city, 0, 0);
+        canvasContext.fillText(zone.city, 0, 0);
         canvasContext.restore();
       });
     }
@@ -257,7 +252,8 @@
       const nowUtc = new Date();
       let utcHours = nowUtc.getUTCHours() + nowUtc.getUTCMinutes() / 60;
       
-      const angle = (utcHours - 12) * (Math.PI / 12) - Math.PI / 2;
+      // 0 at top (midnight), same as numbers
+      const angle = utcHours * (Math.PI / 12) - Math.PI / 2;
 
       const handLen = radius * 0.15;
 
@@ -285,7 +281,7 @@
       canvasContext.rotate(angle + Math.PI);
       
       canvasContext.beginPath();
-      canvasContext.arc(0, 0, mapRadius, 0, Math.PI); 
+      canvasContext.arc(0, 0, mapRadius, 0, Math.PI);
       canvasContext.fillStyle = 'rgba(0, 0, 50, 0.3)';
       canvasContext.fill();
       
