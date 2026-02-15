@@ -1,4 +1,7 @@
 
+
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -146,7 +149,6 @@
     window.addEventListener('orientationchange', onWindowResize);
 
     function drawClockFace() {
-      // Use logical size (CSS pixels) for calculations
       const size   = parseFloat(clockCanvasElement.style.width);
       const center = size / 2;
       const radius = center * 0.95; 
@@ -155,6 +157,18 @@
       
       canvasContext.save();
       canvasContext.translate(center, center);
+
+      // ───────────────────────────────────────────────
+      //  Calculate rotation so current UTC hour is at top
+      // ───────────────────────────────────────────────
+      const nowUtc = new Date();
+      let utcHours = nowUtc.getUTCHours() + nowUtc.getUTCMinutes() / 60 + nowUtc.getUTCSeconds() / 3600;
+      
+      const rotationForCurrentTime = - (utcHours - 12) * (Math.PI / 12);
+
+      // ── Apply rotation to map, day/night, numbers, cities ──
+      canvasContext.save();
+      canvasContext.rotate(rotationForCurrentTime);
 
       // 1. Draw Map (Clipped)
       const mapRadius = radius * 0.55;
@@ -178,14 +192,16 @@
       // 2. Day/Night Shader
       drawDayNightOverlay(mapRadius);
 
-      // 3. Borders
-      drawClockBorder(radius, mapRadius);
-
       // 4. Numbers (24h) and Cities
       drawHourNumbersAndCities(radius, mapRadius);
 
-      // 5. Hour Hand (Triangle pointer)
-      drawHourHand(mapRadius);
+      canvasContext.restore();
+
+      // 3. Borders (unrotated circle)
+      drawClockBorder(radius, mapRadius);
+
+      // 5. Hour Hand (Triangle pointer fixed at top)
+      drawHourHandFixedAtTop(mapRadius);
       
       canvasContext.restore();
     }
@@ -200,118 +216,116 @@
     }
 
     function drawHourNumbersAndCities(outerRadius, mapRadius) {
-      // -- CONFIG --
-      const numberRingRadius = mapRadius + (outerRadius - mapRadius) * 0.15;
-      const cityRingRadius   = mapRadius + (outerRadius - mapRadius) * 0.55;
-      
-      const numFontSize = outerRadius * 0.05;
-      const cityFontSize = outerRadius * 0.055; // Larger city font
-      
-      // -- 1. 24-Hour Numbers (Inner Ring) --
-      canvasContext.font = `bold ${numFontSize}px sans-serif`;
-      canvasContext.textAlign = 'center';
-      canvasContext.textBaseline = 'middle';
-      canvasContext.fillStyle = '#000';
+  // -- CONFIG --
+  const numberRingRadius = mapRadius + (outerRadius - mapRadius) * 0.15;
+  const cityRingRadius   = mapRadius + (outerRadius - mapRadius) * 0.55;
+  
+  const numFontSize = outerRadius * 0.05;
+  const cityFontSize = outerRadius * 0.055;
 
-      for (let h = 0; h < 24; h++) {
-        // Standard 24h dial: 0 at top (or 12 at top). 
-        // Let's put 12 at Top (noon) for standard UTC view, or 0 at top. 
-        // Standard world timers usually have 12 (Noon) at top.
-        // h=0 is midnight. 
-        const angle = (h - 12) * Math.PI / 12 - Math.PI / 2; // 12 at top
-        
-        const x = numberRingRadius * Math.cos(angle);
-        const y = numberRingRadius * Math.sin(angle);
+  // Background ring radii (slightly larger than text to create padding)
+  const bgInnerRadius = numberRingRadius - numFontSize * 1.1;
+  const bgOuterRadius = numberRingRadius + numFontSize * 1.1;
 
-        canvasContext.save();
-        canvasContext.translate(x, y);
-        // Rotate numbers so base points to center
-        canvasContext.rotate(angle + Math.PI / 2); 
-        canvasContext.fillText(h, 0, 0);
-        canvasContext.restore();
-      }
+  // ── Draw segmented background rings first ──
+  canvasContext.save();
+  canvasContext.lineWidth = bgOuterRadius - bgInnerRadius;
 
-      // -- 2. City Names (Counter-Clockwise) --
-      canvasContext.font = `600 ${cityFontSize}px sans-serif`;
-      
-      // We need to calculate the rotation step.
-      // New York is index 6. 
-      // User wants New York roughly at 3 o'clock (Right side) or fixed relative to previous design.
-      // Previous design: NY was at ~3 o'clock.
-      // 24 zones. 
-      
-      // To place NY (index 6) at 3 o'clock (0 radians):
-      // angle = startAngle - (index * step)
-      // 0 = startAngle - (6 * PI/12)
-      // startAngle = PI/2. added - (Math.PI / 12) to correct new New York to index 5 positio
-      
-      const offsetAngle = (Math.PI / 2) - (Math.PI / 12); 
+  for (let h = 0; h < 24; h++) {
+    const angle = (h - 12) * Math.PI / 12 - Math.PI / 2;
+    const startAngle = angle - Math.PI / 24;
+    const endAngle   = angle + Math.PI / 24;
 
-      timeZones.forEach((zone, i) => {
-        // Counter Clockwise: Subtract index from offset
-        const angle = offsetAngle - (i * (Math.PI / 12));
-        
-        // Calculate position
-        // Alternate radius slightly to prevent overlap if names are long, 
-        // but user asked for "kerning among circle", implying a cleaner ring.
-        // With larger text, we might need a slight zigzag or just one ring.
-        // Let's try one ring first as it looks cleaner, if they fit.
-        // If crowded, we stagger.
-        const stagger = (i % 2 === 0) ? 0 : (outerRadius * 0.08);
-        const r = cityRingRadius + stagger;
+    let isDarkSegment = (h >= 19 || h <= 6); // 18–24 and 0–6 (but 0 shown as 24 or 0)
 
-        const x = r * Math.cos(angle);
-        const y = r * Math.sin(angle);
+    canvasContext.beginPath();
+    canvasContext.arc(0, 0, numberRingRadius, startAngle, endAngle);
+    canvasContext.strokeStyle = isDarkSegment ? '#1e1e1e' : '#f0f0f0'; // very dark vs very light grey
+    canvasContext.lineCap = 'butt';
+    canvasContext.stroke();
+  }
+  canvasContext.restore();
 
-        canvasContext.save();
-        canvasContext.translate(x, y);
+  // ── Now draw the numbers on top ──
+  canvasContext.font = `bold ${numFontSize}px sans-serif`;
+  canvasContext.textAlign = 'center';
+  canvasContext.textBaseline = 'middle';
 
-        // -- LEGIBILITY LOGIC --
-        // Check if we are in the Top Half or Bottom Half
-        // Canvas Y is positive down.
-        // y < 0 is Top Half. y > 0 is Bottom Half.
-        
-        if (y < 0) {
-            // TOP HALF: Tops point OUTWARD.
-            // Standard text rotation matches the tangent + 90deg.
-            // angle + PI/2 creates text standing on the circle (base to center).
-            canvasContext.rotate(angle + Math.PI / 2);
-        } else {
-            // BOTTOM HALF: Tops point INWARD.
-            // We need to flip the text 180deg relative to the top logic.
-            // angle - PI/2 makes the top point to center.
-            canvasContext.rotate(angle - Math.PI / 2);
-        }
+  for (let h = 0; h < 24; h++) {
+    const displayNumber = h === 0 ? 24 : h; // optional: show 0 as 24
+    const angle = (h - 12) * Math.PI / 12 - Math.PI / 2;
+    
+    const x = numberRingRadius * Math.cos(angle);
+    const y = numberRingRadius * Math.sin(angle);
 
-        canvasContext.fillStyle = '#222';
-        canvasContext.fillText(zone.city, 0, 0);
-        canvasContext.restore();
-      });
+    const isDarkSegment = (h >= 19 || h <= 6);
+
+    canvasContext.save();
+    canvasContext.translate(x, y);
+    canvasContext.rotate(angle + Math.PI / 2); 
+    
+    // White text on dark background segments, dark text on light segments
+    canvasContext.fillStyle = isDarkSegment ? '#ffffff' : '#222222';
+    canvasContext.fillText(displayNumber, 0, 0);
+    
+    canvasContext.restore();
+  }
+
+  // ── City names (unchanged) ──
+  canvasContext.font = `600 ${cityFontSize}px sans-serif`;
+  
+  const offsetAngle = (Math.PI / 2) - (Math.PI / 12); 
+
+  timeZones.forEach((zone, i) => {
+    const angle = offsetAngle - (i * (Math.PI / 12));
+    const stagger = (i % 2 === 0) ? 0 : (outerRadius * 0.08);
+    const r = cityRingRadius + stagger;
+
+    const x = r * Math.cos(angle);
+    const y = r * Math.sin(angle);
+
+    canvasContext.save();
+    canvasContext.translate(x, y);
+
+    if (y < 0) {
+      canvasContext.rotate(angle + Math.PI / 2);
+    } else {
+      canvasContext.rotate(angle - Math.PI / 2);
     }
 
-    function drawHourHand(radius) {
-      // Draws a small triangle pointer indicating the current UTC time on the inner ring
-      const nowUtc = new Date();
-      // UTC time as fraction
-      let utcHours = nowUtc.getUTCHours() + nowUtc.getUTCMinutes() / 60;
-      
-      // Map 24h to angle. In our loop above: 12 is at -PI/2 (Top).
-      // So 12 = -90deg. 
-      // angle = (h - 12) * PI/12 - PI/2
-      const angle = (utcHours - 12) * (Math.PI / 12) - Math.PI / 2;
+    canvasContext.fillStyle = '#222';
+    canvasContext.fillText(zone.city, 0, 0);
+    canvasContext.restore();
+  });
+}
 
-      const handLen = radius * 0.15;
+    function drawHourHandFixedAtTop(mapRadius) {
+      // Because we rotated the ring so current time is at top,
+      // we now just draw the pointer straight up (at angle = -π/2)
+      const handLen = mapRadius * 0.15;
 
       canvasContext.save();
-      canvasContext.rotate(angle);
-      canvasContext.translate(radius * 1.05, 0); // Move to edge of map
-      
+      // No need to calculate angle — it's always at top after ring rotation
+      canvasContext.rotate(-Math.PI / 2);           // point to 12 o'clock position
+      canvasContext.translate(mapRadius * 1.05, 0); // move to edge of map
+
       canvasContext.beginPath();
-      canvasContext.moveTo(0, 0); // Point
+      canvasContext.moveTo(0, 0);
       canvasContext.lineTo(-handLen, -handLen/2);
-      canvasContext.lineTo(-handLen, handLen/2);
+      canvasContext.lineTo(-handLen,  handLen/2);
+      canvasContext.closePath();
+      
       canvasContext.fillStyle = 'red';
       canvasContext.fill();
+      
+      // Optional: thin stem line
+      canvasContext.beginPath();
+      canvasContext.moveTo(0, 0);
+      canvasContext.lineTo(-mapRadius * 0.02, 0);
+      canvasContext.strokeStyle = 'red';
+      canvasContext.lineWidth = 3;
+      canvasContext.stroke();
+
       canvasContext.restore();
     }
 
@@ -421,5 +435,4 @@
   </script>
 </body>
 </html>
-
 
