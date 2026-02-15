@@ -219,7 +219,7 @@
     const startAngle = angle - Math.PI / 24;
     const endAngle   = angle + Math.PI / 24;
 
-    let isDarkSegment = (h >= 18 || h <= 6); // 18–24 and 0–6 (but 0 shown as 24 or 0)
+    let isDarkSegment = (h >= 19 || h <= 6); // 18–24 and 0–6 (but 0 shown as 24 or 0)
 
     canvasContext.beginPath();
     canvasContext.arc(0, 0, numberRingRadius, startAngle, endAngle);
