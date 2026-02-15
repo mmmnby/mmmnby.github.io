@@ -61,7 +61,7 @@
 
   <script>
     const worldMapImage = new Image();
-    worldMapImage.src = 'worldmap.jpg'; // North-polar centered map recommended
+    worldMapImage.src = 'worldmap.jpg';
     worldMapImage.onload = onWindowResize;
 
     const clockCanvasElement    = document.getElementById('clockCanvas');
@@ -101,7 +101,7 @@
 
     const browserUtcOffset = -new Date().getTimezoneOffset() / 60;
     let currentZoneIndex = timeZones.findIndex(z => z.offset === browserUtcOffset);
-    if (currentZoneIndex < 0) currentZoneIndex = 11; // London default
+    if (currentZoneIndex < 0) currentZoneIndex = 11;
 
     function onWindowResize() {
       const canvasSize = Math.min(window.innerWidth, window.innerHeight) * 0.92;
@@ -135,9 +135,28 @@
 
       drawDayNightOverlay(radius * 0.78);
       drawHourNumbersAroundEarth(radius);
-      drawTickMarks(radius);
       drawCityRings(radius);
+      drawOuterTicks(radius);  // Ticks now outermost
       drawHourHand(radius);
+    }
+
+    function drawOuterTicks(radius) {
+      const tickRad = radius * 1.14; // Outside cities
+      for (let i = 0; i < 24; i++) {
+        const angle = i * Math.PI / 12 - Math.PI / 2;
+        canvasContext.beginPath();
+        canvasContext.moveTo(Math.cos(angle) * radius * 1.10, Math.sin(angle) * radius * 1.10);
+        canvasContext.lineTo(Math.cos(angle) * tickRad, Math.sin(angle) * tickRad);
+        canvasContext.lineWidth = 4;
+        canvasContext.strokeStyle = '#000';
+        canvasContext.stroke();
+      }
+      // Outer border ring
+      canvasContext.beginPath();
+      canvasContext.arc(0, 0, tickRad, 0, Math.PI * 2);
+      canvasContext.lineWidth = 5;
+      canvasContext.strokeStyle = '#000';
+      canvasContext.stroke();
     }
 
     function drawHourNumbersAroundEarth(radius) {
@@ -154,42 +173,27 @@
 
         canvasContext.save();
         canvasContext.translate(x, y);
-        canvasContext.rotate(angle + Math.PI / 2); // tops inward
+        canvasContext.rotate(angle - Math.PI / 2); // Flipped: tops inward to center
         canvasContext.fillStyle = '#000';
         canvasContext.fillText(h, 0, 0);
         canvasContext.restore();
       }
     }
 
-    function drawTickMarks(radius) {
-      const tickRadiusInner = radius * 0.88;   // just outside numbers
-      const tickRadiusOuter = radius * 0.94;   // before cities start
-
-      for (let i = 0; i < 24; i++) {
-        const angle = i * Math.PI / 12 - Math.PI / 2;
-        canvasContext.beginPath();
-        canvasContext.moveTo(Math.cos(angle) * tickRadiusInner, Math.sin(angle) * tickRadiusInner);
-        canvasContext.lineTo(Math.cos(angle) * tickRadiusOuter, Math.sin(angle) * tickRadiusOuter);
-        canvasContext.lineWidth = 4;
-        canvasContext.strokeStyle = '#000';
-        canvasContext.stroke();
-      }
-    }
-
     function drawCityRings(radius) {
-      const baseFontSize = radius * 0.072; // Slightly larger for better legibility
+      const baseFontSize = radius * 0.072; // Slightly larger for legibility
       canvasContext.textAlign = 'center';
       canvasContext.textBaseline = 'middle';
 
-      const innerCityRad = radius * 0.99;
-      const outerCityRad = radius * 1.08;
-      const letterSpacing = 1.0;
+      const innerCityRad = radius * 0.98;
+      const outerCityRad = radius * 1.07;
+      const letterSpacing = 1.2;
 
       timeZones.forEach((zone, i) => {
         const isInner = i % 2 === 0;
         const cityRad = isInner ? innerCityRad : outerCityRad;
 
-        // 180° rotated layout (as previously set)
+        // 180° rotated base + CCW progression
         let angle = - (i * Math.PI / 12) - Math.PI / 2 + Math.PI;
 
         const city = zone.city;
@@ -198,9 +202,13 @@
         canvasContext.fillStyle = '#111';
 
         const chars = city.split('');
-        const totalWidthApprox = chars.length * baseFontSize * 0.58;
+        const totalWidthApprox = chars.length * baseFontSize * 0.6;
         const arcLength = totalWidthApprox + (chars.length - 1) * letterSpacing;
         const startAngle = angle - (arcLength / (2 * cityRad));
+
+        // Orientation split: outward for Bangkok→Berlin→New York-ish (indices ~18 to ~6 via wrap), inward for Beijing→Pago Pago→MexicoCit-ish
+        const outwardIndices = [6,7,8,9,10,11,12,13,14,15,16,17,18]; // Adjust to match your examples
+        const textOutward = outwardIndices.includes(i % timeZones.length);
 
         chars.forEach((char, j) => {
           const charAngle = startAngle + (j * (arcLength / chars.length) / cityRad);
@@ -209,12 +217,9 @@
 
           canvasContext.save();
           canvasContext.translate(x, y);
-
-          // Inner ring: tops face inward → rotate +π relative to normal
-          // Outer ring: tops face outward → normal orientation
-          const textRotation = isInner ? (charAngle + Math.PI / 2 + Math.PI) : (charAngle + Math.PI / 2);
-
-          canvasContext.rotate(textRotation);
+          // Tops outward = +Math.PI/2; inward = -Math.PI/2 (flips text)
+          const rotation = textOutward ? (charAngle + Math.PI / 2) : (charAngle - Math.PI / 2);
+          canvasContext.rotate(rotation);
           canvasContext.fillText(char, 0, 0);
           canvasContext.restore();
         });
