@@ -187,17 +187,16 @@
       const bgInnerRadius = numberRingRadius - numFontSize * 1.1;
       const bgOuterRadius = numberRingRadius + numFontSize * 1.1;
 
-      // ── NEW LOGIC: Calculate discrete UTC offset ──
       const now = new Date();
       const currentUtcHour = now.getUTCHours(); 
 
-      // ── Draw segmented background rings (ROTATING) ──
+      // ── Background Segments (COUNTER-CLOCKWISE) ──
       canvasContext.save();
       canvasContext.lineWidth = bgOuterRadius - bgInnerRadius;
 
       for (let h = 0; h < 24; h++) {
-        // Offset the angle so currentUtcHour is at -PI/2 (Top)
-        const angle = ((h - currentUtcHour) * Math.PI / 12) - Math.PI / 2;
+        // Reversed logic: (currentUtcHour - h) makes it CCW
+        const angle = ((currentUtcHour - h) * Math.PI / 12) - Math.PI / 2;
         const startAngle = angle - Math.PI / 24;
         const endAngle   = angle + Math.PI / 24;
 
@@ -210,14 +209,15 @@
       }
       canvasContext.restore();
 
-      // ── Draw the numbers (ROTATING) ──
+      // ── Hour Numbers (COUNTER-CLOCKWISE & INWARD POINTING) ──
       canvasContext.font = `bold ${numFontSize}px sans-serif`;
       canvasContext.textAlign = 'center';
       canvasContext.textBaseline = 'middle';
 
       for (let h = 0; h < 24; h++) {
         const displayNumber = h === 0 ? 24 : h;
-        const angle = ((h - currentUtcHour) * Math.PI / 12) - Math.PI / 2;
+        // Reversed logic for CCW placement
+        const angle = ((currentUtcHour - h) * Math.PI / 12) - Math.PI / 2;
         
         const x = numberRingRadius * Math.cos(angle);
         const y = numberRingRadius * Math.sin(angle);
@@ -225,18 +225,20 @@
 
         canvasContext.save();
         canvasContext.translate(x, y);
-        canvasContext.rotate(angle + Math.PI / 2); 
+        // Rotate -PI/2 (90deg CCW) relative to the radius to point the top inward
+        canvasContext.rotate(angle - Math.PI / 2); 
         canvasContext.fillStyle = isDarkSegment ? '#ffffff' : '#222222';
         canvasContext.fillText(displayNumber, 0, 0);
         canvasContext.restore();
       }
 
-      // ── City names (STATIC - UNCHANGED) ──
+      // ── City names (Aligned with CCW flow) ──
       canvasContext.font = `600 ${cityFontSize}px sans-serif`;
-      const offsetAngle = (Math.PI / 2) - (Math.PI / 12); 
+      const offsetAngle = - (Math.PI / 2); // 0 offset city (London) is at the top
 
       timeZones.forEach((zone, i) => {
-        const angle = offsetAngle - (i * (Math.PI / 12));
+        // Cities now rotate CCW as offset increases (+1, +2, etc)
+        const angle = offsetAngle - (zone.offset * (Math.PI / 12));
         const stagger = (i % 2 === 0) ? 0 : (outerRadius * 0.08);
         const r = cityRingRadius + stagger;
 
@@ -245,6 +247,7 @@
 
         canvasContext.save();
         canvasContext.translate(x, y);
+        // Keep city text readable (outward or upright depending on hemishpere)
         if (y < 0) {
           canvasContext.rotate(angle + Math.PI / 2);
         } else {
@@ -258,10 +261,8 @@
 
     function drawHourHand(radius) {
       const nowUtc = new Date();
-      let utcHours = nowUtc.getUTCHours() + nowUtc.getUTCMinutes() / 60;
-      // Since UTC hour is now always at the top, the pointer remains at the top
-      // But to maintain the logic of pointing at the current minute/fraction:
-      const angle = -Math.PI / 2 + (nowUtc.getUTCMinutes() / 60) * (Math.PI / 12);
+      // Hour hand stays at top, but tilts slightly CCW based on minute progress
+      const angle = -Math.PI / 2 - (nowUtc.getUTCMinutes() / 60) * (Math.PI / 12);
 
       const handLen = radius * 0.15;
       canvasContext.save();
@@ -279,7 +280,8 @@
     function drawDayNightOverlay(mapRadius) {
       const nowUtc = new Date();
       const h = nowUtc.getUTCHours() + nowUtc.getUTCMinutes()/60;
-      const angle = (h / 24) * Math.PI * 2; 
+      // Rotation reversed for CCW ring
+      const angle = -(h / 24) * Math.PI * 2; 
 
       canvasContext.save();
       canvasContext.rotate(angle + Math.PI); 
@@ -358,5 +360,3 @@
   </script>
 </body>
 </html>
-
-
