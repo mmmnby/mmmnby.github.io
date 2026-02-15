@@ -134,28 +134,10 @@
       canvasContext.restore();
 
       drawDayNightOverlay(radius * 0.78);
-      drawClockBorder(radius);
       drawHourNumbersAroundEarth(radius);
+      drawTickMarks(radius);
       drawCityRings(radius);
       drawHourHand(radius);
-    }
-
-    function drawClockBorder(radius) {
-      canvasContext.beginPath();
-      canvasContext.arc(0, 0, radius * 1.10, 0, Math.PI * 2);
-      canvasContext.lineWidth = 5;
-      canvasContext.strokeStyle = '#000';
-      canvasContext.stroke();
-
-      for (let i = 0; i < 24; i++) {
-        const angle = i * Math.PI / 12 - Math.PI / 2;
-        canvasContext.beginPath();
-        canvasContext.moveTo(Math.cos(angle) * radius * 1.02, Math.sin(angle) * radius * 1.02);
-        canvasContext.lineTo(Math.cos(angle) * radius * 1.10, Math.sin(angle) * radius * 1.10);
-        canvasContext.lineWidth = 4;
-        canvasContext.strokeStyle = '#000';
-        canvasContext.stroke();
-      }
     }
 
     function drawHourNumbersAroundEarth(radius) {
@@ -172,27 +154,42 @@
 
         canvasContext.save();
         canvasContext.translate(x, y);
-        canvasContext.rotate(angle + Math.PI / 2);
+        canvasContext.rotate(angle + Math.PI / 2); // tops inward
         canvasContext.fillStyle = '#000';
         canvasContext.fillText(h, 0, 0);
         canvasContext.restore();
       }
     }
 
+    function drawTickMarks(radius) {
+      const tickRadiusInner = radius * 0.88;   // just outside numbers
+      const tickRadiusOuter = radius * 0.94;   // before cities start
+
+      for (let i = 0; i < 24; i++) {
+        const angle = i * Math.PI / 12 - Math.PI / 2;
+        canvasContext.beginPath();
+        canvasContext.moveTo(Math.cos(angle) * tickRadiusInner, Math.sin(angle) * tickRadiusInner);
+        canvasContext.lineTo(Math.cos(angle) * tickRadiusOuter, Math.sin(angle) * tickRadiusOuter);
+        canvasContext.lineWidth = 4;
+        canvasContext.strokeStyle = '#000';
+        canvasContext.stroke();
+      }
+    }
+
     function drawCityRings(radius) {
-      const baseFontSize = radius * 0.065; // Large and readable
+      const baseFontSize = radius * 0.072; // Slightly larger for better legibility
       canvasContext.textAlign = 'center';
       canvasContext.textBaseline = 'middle';
 
-      const innerCityRad = radius * 0.98;
-      const outerCityRad = radius * 1.07;
+      const innerCityRad = radius * 0.99;
+      const outerCityRad = radius * 1.08;
       const letterSpacing = 1.0;
 
       timeZones.forEach((zone, i) => {
         const isInner = i % 2 === 0;
         const cityRad = isInner ? innerCityRad : outerCityRad;
 
-        // Base progression CCW, then + Math.PI for 180° rotation (flips positions upside-down)
+        // 180° rotated layout (as previously set)
         let angle = - (i * Math.PI / 12) - Math.PI / 2 + Math.PI;
 
         const city = zone.city;
@@ -201,7 +198,7 @@
         canvasContext.fillStyle = '#111';
 
         const chars = city.split('');
-        const totalWidthApprox = chars.length * baseFontSize * 0.6;
+        const totalWidthApprox = chars.length * baseFontSize * 0.58;
         const arcLength = totalWidthApprox + (chars.length - 1) * letterSpacing;
         const startAngle = angle - (arcLength / (2 * cityRad));
 
@@ -212,7 +209,12 @@
 
           canvasContext.save();
           canvasContext.translate(x, y);
-          canvasContext.rotate(charAngle + Math.PI / 2); // Tops outward/upward relative to radius
+
+          // Inner ring: tops face inward → rotate +π relative to normal
+          // Outer ring: tops face outward → normal orientation
+          const textRotation = isInner ? (charAngle + Math.PI / 2 + Math.PI) : (charAngle + Math.PI / 2);
+
+          canvasContext.rotate(textRotation);
           canvasContext.fillText(char, 0, 0);
           canvasContext.restore();
         });
