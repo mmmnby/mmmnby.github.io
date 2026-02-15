@@ -15,356 +15,405 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      font-family: system-ui, sans-serif;
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       touch-action: manipulation;
-      color: #222;
     }
-
-    canvas { display: block; touch-action: none; }
-    
-    #info {
-      margin: 0.6em 0;
-      font-size: 1.15rem;
+    #clockCanvas { display: block; }
+    #digitalClock, #localTimeContainer {
+      margin-top: 0.5em;
+      font-size: 1.1em;
       font-weight: 500;
       text-align: center;
+      color: #333;
     }
-
-    #controls {
-      display: flex;
-      gap: 1rem;
-      margin: 0.8em 0;
+    #zoneButtonsContainer {
+      margin-top: 10px;
     }
-
-    button {
-      font-size: 1.3rem;
-      padding: 0.4em 1em;
-      min-width: 3.5em;
+    #zoneButtonsContainer button {
+      font-size: 1.2em;
+      padding: 0.3em 0.8em;
+      margin: 0 0.5em;
       cursor: pointer;
-      border: 1px solid #888;
-      background: white;
-      border-radius: 6px;
-      touch-action: manipulation;
+      border: 1px solid #999;
+      background: #fff;
+      border-radius: 4px;
     }
-
     #timeZoneSlider {
       width: 90vw;
-      max-width: 520px;
-      height: 2.4em;
+      max-width: 500px;
+      height: 2em;
       margin: 1em auto;
-      background: #e0e0e0;
-      border-radius: 8px;
-      position: relative;
-      touch-action: pan-y;
+      background: #ddd;
+      border-radius: 0.25em;
+      touch-action: none;
       user-select: none;
+      position: relative;
     }
-
     #timeZoneSlider::after {
-      content: "Swipe left/right to change zone";
+      content: 'Swipe to change zone';
       position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #555;
-      font-size: 0.9rem;
+      width: 100%;
+      text-align: center;
+      line-height: 2em;
+      color: #777;
+      font-size: 0.8em;
       pointer-events: none;
     }
+    #timeZoneSlider:active { background: #ccc; }
   </style>
 </head>
 <body>
 
-  <canvas id="clock"></canvas>
+  <canvas id="clockCanvas"></canvas>
 
-  <div id="info">
-    <div id="utcTime"></div>
-    <div id="localTime"></div>
+  <div id="digitalClock"></div>
+
+  <div id="localTimeContainer">
+    <span id="localTimeDisplay"></span>
   </div>
 
-  <div id="controls">
-    <button id="prev">←</button>
-    <button id="next">→</button>
+  <div id="zoneButtonsContainer">
+    <button id="decreaseZoneButton">←</button>
+    <button id="increaseZoneButton">→</button>
   </div>
 
   <div id="timeZoneSlider"></div>
 
   <script>
-    // ────────────────────────────────────────────────
-    //  Constants & Data
-    // ────────────────────────────────────────────────
-    const TIME_ZONES = [
-      { city: 'Pago Pago',   offset: -11 },
-      { city: 'Honolulu',    offset: -10 },
-      { city: 'Anchorage',   offset:  -9 },
-      { city: 'Los Angeles', offset:  -8 },
-      { city: 'Denver',      offset:  -7 },
-      { city: 'Mexico City', offset:  -6 },
-      { city: 'New York',    offset:  -5 },
-      { city: 'Santiago',    offset:  -4 },
-      { city: 'Buenos Aires',offset:  -3 },
-      { city: 'Ponta Delgada',offset: -2 },
-      { city: 'Azores',      offset:  -1 },
-      { city: 'London',      offset:   0 },
-      { city: 'Berlin',      offset:  +1 },
-      { city: 'Cairo',       offset:  +2 },
-      { city: 'Moscow',      offset:  +3 },
-      { city: 'Dubai',       offset:  +4 },
-      { city: 'Karachi',     offset:  +5 },
-      { city: 'Dhaka',       offset:  +6 },
-      { city: 'Bangkok',     offset:  +7 },
-      { city: 'Beijing',     offset:  +8 },
-      { city: 'Tokyo',       offset:  +9 },
-      { city: 'Sydney',      offset: +10 },
-      { city: 'Noumea',      offset: +11 },
-      { city: 'Auckland',    offset: +12 },
+    const worldMapImage = new Image();
+    worldMapImage.src = 'worldmap.jpg'; // Ensure this file exists
+    worldMapImage.onload = onWindowResize;
+
+    const clockCanvasElement    = document.getElementById('clockCanvas');
+    const canvasContext         = clockCanvasElement.getContext('2d');
+    const digitalClockElement   = document.getElementById('digitalClock');
+    const localTimeElement      = document.getElementById('localTimeDisplay');
+    const increaseZoneButton    = document.getElementById('increaseZoneButton');
+    const decreaseZoneButton    = document.getElementById('decreaseZoneButton');
+    const timeZoneSliderElement = document.getElementById('timeZoneSlider');
+
+    const timeZones = [
+      { city: 'Pago Pago',  offset: -11 },
+      { city: 'Honolulu',   offset: -10 },
+      { city: 'Anchorage',  offset:  -9 },
+      { city: 'Los Angls',  offset:  -8 },
+      { city: 'Denver',     offset:  -7 },
+      { city: 'MexicoCit',  offset:  -6 },
+      { city: 'New York',   offset:  -5 },
+      { city: 'Santiago',   offset:  -4 },
+      { city: 'BuenosAir',  offset:  -3 },
+      { city: 'Ponta Del',  offset:  -2 },
+      { city: 'Azores',     offset:  -1 },
+      { city: 'London',     offset:   0 },
+      { city: 'Berlin',     offset:  +1 },
+      { city: 'Cairo',      offset:  +2 },
+      { city: 'Moscow',     offset:  +3 },
+      { city: 'Dubai',      offset:  +4 },
+      { city: 'Karachi',    offset:  +5 },
+      { city: 'Dhaka',      offset:  +6 },
+      { city: 'Bangkok',    offset:  +7 },
+      { city: 'Beijing',    offset:  +8 },
+      { city: 'Tokyo',      offset:  +9 },
+      { city: 'Sydney',     offset: +10 },
+      { city: 'Noumea',     offset: +11 },
+      { city: 'Auckland',   offset: +12 }
     ];
 
-    const MAP_IMAGE_SRC = 'worldmap.jpg'; // ← make sure this file is available
+    const browserUtcOffset = -new Date().getTimezoneOffset() / 60;
+    let currentZoneIndex = timeZones.findIndex(z => z.offset === browserUtcOffset);
+    if (currentZoneIndex < 0) currentZoneIndex = 11; // London default
 
-    // ────────────────────────────────────────────────
-    //  State
-    // ────────────────────────────────────────────────
-    const state = {
-      canvas: document.getElementById('clock'),
-      ctx: null,
-      mapImage: new Image(),
-      currentZoneIndex: TIME_ZONES.findIndex(z => z.offset === -new Date().getTimezoneOffset() / 60) || 11,
-      dpr: window.devicePixelRatio || 1,
-    };
+    function onWindowResize() {
+      // Make the canvas fit nicely
+      const canvasSize = Math.min(window.innerWidth, window.innerHeight) * 0.85;
+      clockCanvasElement.width  = canvasSize;
+      clockCanvasElement.height = canvasSize;
+      
+      // Handle High DPI displays for crisp text
+      const dpr = window.devicePixelRatio || 1;
+      clockCanvasElement.style.width = canvasSize + "px";
+      clockCanvasElement.style.height = canvasSize + "px";
+      clockCanvasElement.width = canvasSize * dpr;
+      clockCanvasElement.height = canvasSize * dpr;
+      canvasContext.scale(dpr, dpr);
 
-    state.ctx = state.canvas.getContext('2d');
-
-    // ────────────────────────────────────────────────
-    //  DOM Elements
-    // ────────────────────────────────────────────────
-    const utcEl     = document.getElementById('utcTime');
-    const localEl   = document.getElementById('localTime');
-    const prevBtn   = document.getElementById('prev');
-    const nextBtn   = document.getElementById('next');
-    const slider    = document.getElementById('timeZoneSlider');
-
-    // ────────────────────────────────────────────────
-    //  Core Drawing Functions
-    // ────────────────────────────────────────────────
-    function resizeCanvas() {
-      const size = Math.min(window.innerWidth, window.innerHeight) * 0.86;
-      state.canvas.style.width  = `${size}px`;
-      state.canvas.style.height = `${size}px`;
-      state.canvas.width  = size * state.dpr;
-      state.canvas.height = size * state.dpr;
-      state.ctx.scale(state.dpr, state.dpr);
-      draw();
+      drawClockFace();
+      updateDigitalClock();
+      updateLocalTime();
     }
 
-    function getTimeInfo() {
-      const now = new Date();
-      return {
-        utcHours:   now.getUTCHours()   + now.getUTCMinutes()/60 + now.getUTCSeconds()/3600,
-        utcH:       now.getUTCHours(),
-        utcM:       now.getUTCMinutes(),
-        utcS:       now.getUTCSeconds(),
-      };
-    }
+    window.addEventListener('resize', onWindowResize);
+    window.addEventListener('orientationchange', onWindowResize);
 
-    function draw() {
-      const { canvas, ctx, mapImage, currentZoneIndex } = state;
-      const size   = canvas.offsetWidth;
-      const cx     = size / 2;
-      const cy     = size / 2;
-      const radius = size / 2 * 0.95;
+    function drawClockFace() {
+      // Use logical size (CSS pixels) for calculations
+      const size   = parseFloat(clockCanvasElement.style.width);
+      const center = size / 2;
+      const radius = center * 0.95; 
 
-      ctx.clearRect(0, 0, size, size);
-      ctx.save();
-      ctx.translate(cx, cy);
+      canvasContext.clearRect(0, 0, size, size);
+      
+      canvasContext.save();
+      canvasContext.translate(center, center);
 
-      const { utcHours } = getTimeInfo();
-      const rotation = -(utcHours % 24 - 12) * (Math.PI / 12);
+      // 1. Draw Map (Clipped)
+      const mapRadius = radius * 0.55;
+      canvasContext.save();
+      canvasContext.beginPath();
+      canvasContext.arc(0, 0, mapRadius, 0, Math.PI * 2);
+      canvasContext.clip();
 
-      // ── Rotating layer (numbers + cities + map rotation reference) ──
-      ctx.save();
-      ctx.rotate(rotation);
-
-      // Map (clipped)
-      const mapR = radius * 0.56;
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(0, 0, mapR, 0, Math.PI * 2);
-      ctx.clip();
-
-      if (mapImage.complete && mapImage.naturalWidth > 0) {
-        ctx.drawImage(mapImage, -mapR, -mapR, mapR*2, mapR*2);
+      if (worldMapImage.complete && worldMapImage.naturalWidth > 0) {
+        canvasContext.drawImage(worldMapImage, -mapRadius, -mapRadius, mapRadius * 2, mapRadius * 2);
       } else {
-        ctx.fillStyle = '#c0e0ff';
-        ctx.fillRect(-mapR, -mapR, mapR*2, mapR*2);
-        ctx.fillStyle = '#333';
-        ctx.font = 'bold 48px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText("World Map", 0, 0);
+        // Fallback if image missing
+        canvasContext.fillStyle = '#a0d0ff';
+        canvasContext.fill();
+        canvasContext.fillStyle = '#80c0ff';
+        canvasContext.textAlign = 'center';
+        canvasContext.fillText("Map", 0, 0);
       }
-      ctx.restore();
+      canvasContext.restore();
 
-      drawDayNight(mapR);
-      drawNumbersAndCities(radius, mapR);
+      // 2. Day/Night Shader
+      drawDayNightOverlay(mapRadius);
 
-      ctx.restore(); // end rotating layer
+      // 3. Borders
+      drawClockBorder(radius, mapRadius);
 
-      // Fixed elements
-      drawBorder(mapR);
-      drawFixedPointer(mapR);
+      // 4. Numbers (24h) and Cities
+      drawHourNumbersAndCities(radius, mapRadius);
 
-      ctx.restore();
+      // 5. Hour Hand (Triangle pointer)
+      drawHourHand(mapRadius);
+      
+      canvasContext.restore();
     }
 
-    function drawBorder(r) {
-      state.ctx.beginPath();
-      state.ctx.arc(0, 0, r, 0, Math.PI * 2);
-      state.ctx.lineWidth = 2.5;
-      state.ctx.strokeStyle = '#334';
-      state.ctx.stroke();
+    function drawClockBorder(outerRadius, innerRadius) {
+      // Just a clean stroke around the map
+      canvasContext.beginPath();
+      canvasContext.arc(0, 0, innerRadius, 0, Math.PI * 2);
+      canvasContext.lineWidth = 2;
+      canvasContext.strokeStyle = '#333';
+      canvasContext.stroke();
     }
 
-    function drawFixedPointer(mapR) {
-      const len = mapR * 0.16;
-      state.ctx.save();
-      state.ctx.rotate(-Math.PI / 2);
-      state.ctx.translate(mapR * 1.04, 0);
+    function drawHourNumbersAndCities(outerRadius, mapRadius) {
+  // -- CONFIG --
+  const numberRingRadius = mapRadius + (outerRadius - mapRadius) * 0.15;
+  const cityRingRadius   = mapRadius + (outerRadius - mapRadius) * 0.55;
+  
+  const numFontSize = outerRadius * 0.05;
+  const cityFontSize = outerRadius * 0.055;
 
-      state.ctx.beginPath();
-      state.ctx.moveTo(0, 0);
-      state.ctx.lineTo(-len, -len/2.2);
-      state.ctx.lineTo(-len,  len/2.2);
-      state.ctx.closePath();
-      state.ctx.fillStyle = '#c00';
-      state.ctx.fill();
+  // Background ring radii (slightly larger than text to create padding)
+  const bgInnerRadius = numberRingRadius - numFontSize * 1.1;
+  const bgOuterRadius = numberRingRadius + numFontSize * 1.1;
 
-      state.ctx.restore();
+  // ── Draw segmented background rings first ──
+  canvasContext.save();
+  canvasContext.lineWidth = bgOuterRadius - bgInnerRadius;
+
+  for (let h = 0; h < 24; h++) {
+    const angle = (h - 12) * Math.PI / 12 - Math.PI / 2;
+    const startAngle = angle - Math.PI / 24;
+    const endAngle   = angle + Math.PI / 24;
+
+    let isDarkSegment = (h >= 19 || h <= 6); // 18–24 and 0–6 (but 0 shown as 24 or 0)
+
+    canvasContext.beginPath();
+    canvasContext.arc(0, 0, numberRingRadius, startAngle, endAngle);
+    canvasContext.strokeStyle = isDarkSegment ? '#1e1e1e' : '#f0f0f0'; // very dark vs very light grey
+    canvasContext.lineCap = 'butt';
+    canvasContext.stroke();
+  }
+  canvasContext.restore();
+
+  // ── Now draw the numbers on top ──
+  canvasContext.font = `bold ${numFontSize}px sans-serif`;
+  canvasContext.textAlign = 'center';
+  canvasContext.textBaseline = 'middle';
+
+  for (let h = 0; h < 24; h++) {
+    const displayNumber = h === 0 ? 24 : h; // optional: show 0 as 24
+    const angle = (h - 12) * Math.PI / 12 - Math.PI / 2;
+    
+    const x = numberRingRadius * Math.cos(angle);
+    const y = numberRingRadius * Math.sin(angle);
+
+    const isDarkSegment = (h >= 19 || h <= 6);
+
+    canvasContext.save();
+    canvasContext.translate(x, y);
+    canvasContext.rotate(angle + Math.PI / 2); 
+    
+    // White text on dark background segments, dark text on light segments
+    canvasContext.fillStyle = isDarkSegment ? '#ffffff' : '#222222';
+    canvasContext.fillText(displayNumber, 0, 0);
+    
+    canvasContext.restore();
+  }
+
+  // ── City names (unchanged) ──
+  canvasContext.font = `600 ${cityFontSize}px sans-serif`;
+  
+  const offsetAngle = (Math.PI / 2) - (Math.PI / 12); 
+
+  timeZones.forEach((zone, i) => {
+    const angle = offsetAngle - (i * (Math.PI / 12));
+    const stagger = (i % 2 === 0) ? 0 : (outerRadius * 0.08);
+    const r = cityRingRadius + stagger;
+
+    const x = r * Math.cos(angle);
+    const y = r * Math.sin(angle);
+
+    canvasContext.save();
+    canvasContext.translate(x, y);
+
+    if (y < 0) {
+      canvasContext.rotate(angle + Math.PI / 2);
+    } else {
+      canvasContext.rotate(angle - Math.PI / 2);
     }
 
-    function drawDayNight(r) {
-      const h = getTimeInfo().utcHours;
-      const angle = (h / 24) * Math.PI * 2;
+    canvasContext.fillStyle = '#222';
+    canvasContext.fillText(zone.city, 0, 0);
+    canvasContext.restore();
+  });
+}
 
-      state.ctx.save();
-      state.ctx.rotate(angle);
+    function drawHourHand(radius) {
+      // Draws a small triangle pointer indicating the current UTC time on the inner ring
+      const nowUtc = new Date();
+      // UTC time as fraction
+      let utcHours = nowUtc.getUTCHours() + nowUtc.getUTCMinutes() / 60;
+      
+      // Map 24h to angle. In our loop above: 12 is at -PI/2 (Top).
+      // So 12 = -90deg. 
+      // angle = (h - 12) * PI/12 - PI/2
+      const angle = (utcHours - 12) * (Math.PI / 12) - Math.PI / 2;
 
-      state.ctx.beginPath();
-      state.ctx.arc(0, 0, r, Math.PI / 2, Math.PI * 1.5); // night side
-      state.ctx.fillStyle = 'rgba(20, 30, 80, 0.28)';
-      state.ctx.fill();
+      const handLen = radius * 0.15;
 
-      state.ctx.restore();
+      canvasContext.save();
+      canvasContext.rotate(angle);
+      canvasContext.translate(radius * 1.05, 0); // Move to edge of map
+      
+      canvasContext.beginPath();
+      canvasContext.moveTo(0, 0); // Point
+      canvasContext.lineTo(-handLen, -handLen/2);
+      canvasContext.lineTo(-handLen, handLen/2);
+      canvasContext.fillStyle = 'red';
+      canvasContext.fill();
+      canvasContext.restore();
     }
 
-    function drawNumbersAndCities(outerR, mapR) {
-      const numR   = mapR + (outerR - mapR) * 0.18;
-      const cityR  = mapR + (outerR - mapR) * 0.57;
-      const numSize  = outerR * 0.052;
-      const citySize = outerR * 0.058;
+    function drawDayNightOverlay(mapRadius) {
+      // Basic visualization of where it is currently night
+      // Noon (Sun) is at top? No, usually Noon is fixed or rotating.
+      // Since map is static North-up, the shadow rotates.
+      // UTC 12:00 = Sun over Greenwich (roughly).
+      
+      const nowUtc = new Date();
+      const h = nowUtc.getUTCHours() + nowUtc.getUTCMinutes()/60;
+      
+      // Sun position rotates 15 deg/hour.
+      // At UTC 12, Sun is at 0 longitude (Greenwich).
+      // If Map is centered on North Pole, 0 lat is usually down or up?
+      // Assuming standard image projection where UK is top-ish/center.
+      
+      // Simplified: Just rotate the shadow based on time.
+      // 12 UTC = Day at Top. Night at Bottom.
+      const angle = (h / 24) * Math.PI * 2; // 0..2PI
 
-      // Number ring background segments
-      state.ctx.lineWidth = numSize * 2.4;
-      for (let h = 0; h < 24; h++) {
-        const a = (h - 12) * Math.PI / 12 - Math.PI / 2;
-        state.ctx.beginPath();
-        state.ctx.arc(0, 0, numR, a - Math.PI/48, a + Math.PI/48);
-        state.ctx.strokeStyle = (h >= 19 || h <= 5) ? '#222' : '#f8f8f8';
-        state.ctx.stroke();
-      }
-
-      // Hour numbers
-      state.ctx.font = `bold ${numSize}px sans-serif`;
-      state.ctx.textAlign = 'center';
-      state.ctx.textBaseline = 'middle';
-
-      for (let h = 0; h < 24; h++) {
-        const num = h === 0 ? 24 : h;
-        const a = (h - 12) * Math.PI / 12 - Math.PI / 2;
-        const x = numR * Math.cos(a);
-        const y = numR * Math.sin(a);
-
-        state.ctx.save();
-        state.ctx.translate(x, y);
-        state.ctx.rotate(a + Math.PI / 2);
-        state.ctx.fillStyle = (h >= 19 || h <= 5) ? '#fff' : '#222';
-        state.ctx.fillText(num, 0, 0);
-        state.ctx.restore();
-      }
-
-      // City names (static – no rotation applied here)
-      state.ctx.font = `600 ${citySize}px sans-serif`;
-      const startAngle = Math.PI / 2 - Math.PI / 12;
-
-      TIME_ZONES.forEach((zone, i) => {
-        const a = startAngle - i * (Math.PI / 12);
-        const stagger = (i % 2 === 0) ? 0 : outerR * 0.085;
-        const r = cityR + stagger;
-
-        const x = r * Math.cos(a);
-        const y = r * Math.sin(a);
-
-        state.ctx.save();
-        state.ctx.translate(x, y);
-        state.ctx.rotate(y < 0 ? a + Math.PI / 2 : a - Math.PI / 2);
-        state.ctx.fillStyle = '#111';
-        state.ctx.fillText(zone.city, 0, 0);
-        state.ctx.restore();
-      });
+      canvasContext.save();
+      canvasContext.rotate(angle + Math.PI); // Rotate the "Night" part
+      
+      canvasContext.beginPath();
+      // Draw a semi-circle for night
+      canvasContext.arc(0, 0, mapRadius, 0, Math.PI); 
+      canvasContext.fillStyle = 'rgba(0, 0, 50, 0.3)';
+      canvasContext.fill();
+      
+      canvasContext.restore();
     }
 
-    // ────────────────────────────────────────────────
-    //  UI Updates
-    // ────────────────────────────────────────────────
-    function updateTimeDisplays() {
-      const { utcH, utcM, utcS } = getTimeInfo();
-      const zone = TIME_ZONES[state.currentZoneIndex];
-      const localH = (utcH + zone.offset + 24) % 24;
-
-      utcEl.textContent   = `UTC  ${utcH.toString().padStart(2,'0')}:${utcM.toString().padStart(2,'0')}:${utcS.toString().padStart(2,'0')}`;
-      localEl.textContent = `${localH.toString().padStart(2,'0')}:${utcM.toString().padStart(2,'0')}:${utcS.toString().padStart(2,'0')}  —  ${zone.city}  (UTC${zone.offset >= 0 ? '+' : ''}${zone.offset})`;
+    function updateDigitalClock() {
+      const now = new Date();
+      const h = String(now.getUTCHours()).padStart(2, '0');
+      const m = String(now.getUTCMinutes()).padStart(2, '0');
+      const s = String(now.getUTCSeconds()).padStart(2, '0');
+      digitalClockElement.textContent = `UTC: ${h}:${m}:${s}`;
     }
 
-    function changeZone(delta) {
-      state.currentZoneIndex = (state.currentZoneIndex + delta + TIME_ZONES.length) % TIME_ZONES.length;
-      updateTimeDisplays();
+    function formatUtcOffset(offset) {
+      const sign = offset >= 0 ? '+' : '−';
+      return `UTC${sign}${Math.abs(offset)}`;
     }
 
-    // ────────────────────────────────────────────────
-    //  Event Listeners
-    // ────────────────────────────────────────────────
-    window.addEventListener('resize', resizeCanvas);
-    prevBtn.addEventListener('click', () => changeZone(-1));
-    nextBtn.addEventListener('click', () => changeZone(+1));
+    function updateLocalTime() {
+      const now = new Date();
+      const utcH = now.getUTCHours();
+      const utcM = now.getUTCMinutes();
+      const utcS = now.getUTCSeconds();
+      
+      const zone = timeZones[currentZoneIndex];
+      const off = zone.offset;
 
-    // Touch swipe
+      // Calculate local time
+      let locH = (utcH + off) % 24;
+      if (locH < 0) locH += 24;
+      
+      const locHStr = String(Math.floor(locH)).padStart(2, '0');
+      const locMStr = String(utcM).padStart(2, '0');
+      const locSStr = String(utcS).padStart(2, '0');
+
+      const offStr = formatUtcOffset(off);
+      localTimeElement.textContent = `${locHStr}:${locMStr}:${locSStr} — ${zone.city} (${offStr})`;
+    }
+
+    // Interaction Handlers
+    increaseZoneButton.addEventListener('click', () => {
+      currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
+      updateLocalTime();
+    });
+
+    decreaseZoneButton.addEventListener('click', () => {
+      currentZoneIndex = (currentZoneIndex - 1 + timeZones.length) % timeZones.length;
+      updateLocalTime();
+    });
+
+    // Swipe Logic
     let touchStartX = 0;
-    slider.addEventListener('touchstart', e => {
+    timeZoneSliderElement.addEventListener('touchstart', e => {
       touchStartX = e.touches[0].clientX;
-    }, { passive: false });
+    }, {passive: false});
 
-    slider.addEventListener('touchend', e => {
-      const dx = e.changedTouches[0].clientX - touchStartX;
-      if (Math.abs(dx) > 60) {
-        changeZone(dx > 0 ? -1 : +1);
+    timeZoneSliderElement.addEventListener('touchend', e => {
+      const touchEndX = e.changedTouches[0].clientX;
+      const diff = touchEndX - touchStartX;
+      if (Math.abs(diff) > 50) {
+        if (diff > 0) {
+           // Swipe Right -> Decrease Index
+           currentZoneIndex = (currentZoneIndex - 1 + timeZones.length) % timeZones.length;
+        } else {
+           // Swipe Left -> Increase Index
+           currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
+        }
+        updateLocalTime();
       }
-    }, { passive: false });
+    }, {passive: false});
 
-    // ────────────────────────────────────────────────
-    //  Initialization
-    // ────────────────────────────────────────────────
-    state.mapImage.src = MAP_IMAGE_SRC;
-    state.mapImage.crossOrigin = 'anonymous'; // in case you host it elsewhere later
-    state.mapImage.onload = resizeCanvas;
-
-    // Start animation loop
+    // Init
+    onWindowResize();
     setInterval(() => {
-      draw();
-      updateTimeDisplays();
+      drawClockFace();
+      updateDigitalClock();
+      updateLocalTime();
     }, 1000);
-
-    // First draw & update (in case image is cached)
-    resizeCanvas();
-    updateTimeDisplays();
   </script>
 </body>
 </html>
+
 
