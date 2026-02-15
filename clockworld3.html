@@ -149,7 +149,9 @@
       canvasContext.save();
       canvasContext.translate(center, center);
 
-      const mapRadius = radius * 0.55;
+      const mapRadius = radius * 0.50; // Slightly smaller to make room for outer ring
+      
+      // 1. Draw Map
       canvasContext.save();
       canvasContext.beginPath();
       canvasContext.arc(0, 0, mapRadius, 0, Math.PI * 2);
@@ -163,10 +165,12 @@
       }
       canvasContext.restore();
 
+      // 2. Overlays and Rings
       drawDayNightOverlay(mapRadius);
       drawClockBorder(radius, mapRadius);
+      drawOuterTickRing(radius); // Added outer ring
       drawHourNumbersAndCities(radius, mapRadius);
-      drawHourHand(mapRadius);
+      drawLocalTimePointer(radius); // Moved pointer to outer ring
       
       canvasContext.restore();
     }
@@ -179,9 +183,30 @@
       canvasContext.stroke();
     }
 
+    // New function to draw the outermost ring with 24 ticks
+    function drawOuterTickRing(radius) {
+      canvasContext.beginPath();
+      canvasContext.arc(0, 0, radius, 0, Math.PI * 2);
+      canvasContext.lineWidth = 1.5;
+      canvasContext.strokeStyle = '#666';
+      canvasContext.stroke();
+
+      for (let i = 0; i < 24; i++) {
+        const angle = (i * Math.PI / 12) - Math.PI / 2;
+        const tickLen = radius * 0.04;
+        
+        canvasContext.beginPath();
+        canvasContext.moveTo(radius * Math.cos(angle), radius * Math.sin(angle));
+        canvasContext.lineTo((radius - tickLen) * Math.cos(angle), (radius - tickLen) * Math.sin(angle));
+        canvasContext.lineWidth = 2;
+        canvasContext.strokeStyle = '#333';
+        canvasContext.stroke();
+      }
+    }
+
     function drawHourNumbersAndCities(outerRadius, mapRadius) {
-      const numberRingRadius = mapRadius + (outerRadius - mapRadius) * 0.15;
-      const cityRingRadius   = mapRadius + (outerRadius - mapRadius) * 0.55;
+      const numberRingRadius = mapRadius + (outerRadius - mapRadius) * 0.20;
+      const cityRingRadius   = mapRadius + (outerRadius - mapRadius) * 0.60;
       const numFontSize = outerRadius * 0.05;
       const cityFontSize = outerRadius * 0.055;
       const bgInnerRadius = numberRingRadius - numFontSize * 1.1;
@@ -190,12 +215,10 @@
       const now = new Date();
       const currentUtcHour = now.getUTCHours(); 
 
-      // ── Background Segments (COUNTER-CLOCKWISE) ──
       canvasContext.save();
       canvasContext.lineWidth = bgOuterRadius - bgInnerRadius;
 
       for (let h = 0; h < 24; h++) {
-        // Reversed logic: (currentUtcHour - h) makes it CCW
         const angle = ((currentUtcHour - h) * Math.PI / 12) - Math.PI / 2;
         const startAngle = angle - Math.PI / 24;
         const endAngle   = angle + Math.PI / 24;
@@ -209,14 +232,12 @@
       }
       canvasContext.restore();
 
-      // ── Hour Numbers (COUNTER-CLOCKWISE & INWARD POINTING) ──
       canvasContext.font = `bold ${numFontSize}px sans-serif`;
       canvasContext.textAlign = 'center';
       canvasContext.textBaseline = 'middle';
 
       for (let h = 0; h < 24; h++) {
         const displayNumber = h === 0 ? 24 : h;
-        // Reversed logic for CCW placement
         const angle = ((currentUtcHour - h) * Math.PI / 12) - Math.PI / 2;
         
         const x = numberRingRadius * Math.cos(angle);
@@ -225,19 +246,16 @@
 
         canvasContext.save();
         canvasContext.translate(x, y);
-        // Rotate -PI/2 (90deg CCW) relative to the radius to point the top inward
         canvasContext.rotate(angle - Math.PI / 2); 
         canvasContext.fillStyle = isDarkSegment ? '#ffffff' : '#222222';
         canvasContext.fillText(displayNumber, 0, 0);
         canvasContext.restore();
       }
 
-      // ── City names (Aligned with CCW flow) ──
       canvasContext.font = `600 ${cityFontSize}px sans-serif`;
-      const offsetAngle = - (Math.PI / 2); // 0 offset city (London) is at the top
+      const offsetAngle = - (Math.PI / 2); 
 
       timeZones.forEach((zone, i) => {
-        // Cities now rotate CCW as offset increases (+1, +2, etc)
         const angle = offsetAngle - (zone.offset * (Math.PI / 12));
         const stagger = (i % 2 === 0) ? 0 : (outerRadius * 0.08);
         const r = cityRingRadius + stagger;
@@ -247,7 +265,6 @@
 
         canvasContext.save();
         canvasContext.translate(x, y);
-        // Keep city text readable (outward or upright depending on hemishpere)
         if (y < 0) {
           canvasContext.rotate(angle + Math.PI / 2);
         } else {
@@ -259,20 +276,32 @@
       });
     }
 
-    function drawHourHand(radius) {
-      const nowUtc = new Date();
-      // Hour hand stays at top, but tilts slightly CCW based on minute progress
-      const angle = -Math.PI / 2 - (nowUtc.getUTCMinutes() / 60) * (Math.PI / 12);
+    // UPDATED: Points to local time on the outer ring, pointing inward
+    function drawLocalTimePointer(radius) {
+      const now = new Date();
+      const currentUtcHour = now.getUTCHours();
+      const localHoursFloat = now.getHours() + now.getMinutes() / 60;
+      
+      // Calculate angle based on the dynamic rotation of the clock face
+      // Since UTC is always at the top (-PI/2), the pointer must find the 
+      // current local hour relative to the rotating dial.
+      const angle = ((currentUtcHour - localHoursFloat) * Math.PI / 12) - Math.PI / 2;
 
-      const handLen = radius * 0.15;
+      const handLen = radius * 0.12;
       canvasContext.save();
       canvasContext.rotate(angle);
-      canvasContext.translate(radius * 1.05, 0); 
+      // Start slightly outside the ring and point toward the center
+      canvasContext.translate(radius + (handLen * 0.2), 0); 
+      
       canvasContext.beginPath();
-      canvasContext.moveTo(0, 0);
-      canvasContext.lineTo(-handLen, -handLen/2);
-      canvasContext.lineTo(-handLen, handLen/2);
+      canvasContext.moveTo(0, 0); // Tip starts at the outer ring (translated)
+      canvasContext.lineTo(handLen, -handLen/2.5);
+      canvasContext.lineTo(handLen, handLen/2.5);
+      canvasContext.closePath();
+      
       canvasContext.fillStyle = 'red';
+      canvasContext.shadowBlur = 4;
+      canvasContext.shadowColor = 'rgba(0,0,0,0.3)';
       canvasContext.fill();
       canvasContext.restore();
     }
@@ -280,7 +309,6 @@
     function drawDayNightOverlay(mapRadius) {
       const nowUtc = new Date();
       const h = nowUtc.getUTCHours() + nowUtc.getUTCMinutes()/60;
-      // Rotation reversed for CCW ring
       const angle = -(h / 24) * Math.PI * 2; 
 
       canvasContext.save();
@@ -360,3 +388,4 @@
   </script>
 </body>
 </html>
+
