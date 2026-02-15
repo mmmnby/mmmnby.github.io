@@ -166,7 +166,7 @@
       canvasContext.restore();
 
       // 2. Overlays and Rings
-      drawDayNightOverlay(mapRadius);
+      
       drawClockBorder(radius, mapRadius);
       drawOuterTickRing(radius); // Added outer ring
       drawHourNumbersAndCities(radius, mapRadius);
@@ -187,7 +187,7 @@
     function drawOuterTickRing(radius) {
       canvasContext.beginPath();
       canvasContext.arc(0, 0, radius, 0, Math.PI * 2);
-      canvasContext.lineWidth = 1.5;
+      canvasContext.lineWidth = 3.5;
       canvasContext.strokeStyle = '#666';
       canvasContext.stroke();
 
