@@ -281,7 +281,7 @@
       canvasContext.textBaseline = 'middle';
 
       for (let h = 0; h < 24; h++) {
-        const displayNumber = h === 0 ? 24 : h;
+        const displayNumber = h;
         const angle = ((currentUtcHour - h) * Math.PI / 12) - Math.PI / 2;
         
         const x = numberRingRadius * Math.cos(angle);
