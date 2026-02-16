@@ -295,7 +295,7 @@
   // 1. Create a stylish gradient from tip to base
   const gradient = canvasContext.createLinearGradient(0, 0, pointerLen, 0);
   gradient.addColorStop(0, '#ff4d4d'); // Brighter red at the tip
-  gradient.addColorStop(1, '#8b0000'); // Deep crimson at the base
+  gradient.addColorStop(1, '#cc2200'); // Deep crimson at the base
 
   // 2. Define the triangle path
   canvasContext.beginPath();
@@ -307,7 +307,7 @@
   // 3. Add a soft drop shadow for "lift"
   canvasContext.shadowBlur = 6;
   canvasContext.shadowColor = 'rgba(0, 0, 0, 0.4)';
-  canvasContext.shadowOffsetX = 2;
+  canvasContext.shadowOffsetX = 0;
 
   // 4. Fill with our gradient
   canvasContext.fillStyle = gradient;
