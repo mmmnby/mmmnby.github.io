@@ -142,7 +142,6 @@
     function drawClockFace() {
       const size   = parseFloat(clockCanvasElement.style.width);
       const center = size / 2;
-      //  
       const radius = center * 0.95; 
 
       canvasContext.clearRect(0, 0, size, size);
@@ -152,7 +151,6 @@
 
       const mapRadius = radius * 0.55; 
       
-      // 1. Draw Map
       canvasContext.save();
       canvasContext.beginPath();
       canvasContext.arc(0, 0, mapRadius, 0, Math.PI * 2);
@@ -166,10 +164,9 @@
       }
       canvasContext.restore();
 
-      // 2. Overlays and Rings
       drawClockBorder(radius, mapRadius);
       drawOuterTickRing(radius); 
-      drawOuterNumberRing(radius); // Added the 0-23 ring
+      drawOuterStaticNumberRing(radius); // NEW: The requested 24-hour outer ring
       drawHourNumbersAndCities(radius, mapRadius);
       drawLocalTimePointer(radius); 
       
@@ -204,33 +201,32 @@
       }
     }
 
-    // New function to draw numbers 0-23 outside the tick ring
-    function drawOuterNumberRing(radius) {
-      const numberRadius = radius * 1.12; 
-      const fontSize = radius * 0.06;
-      canvasContext.font = `bold ${fontSize}px sans-serif`;
+    // New Function to draw the additional 0-23 ring outside the tick ring
+    function drawOuterStaticNumberRing(radius) {
+      const numFontSize = radius * 0.045;
+      const numberDistance = radius * 1.07; // Just outside the ticks
+      canvasContext.font = `bold ${numFontSize}px sans-serif`;
       canvasContext.textAlign = 'center';
       canvasContext.textBaseline = 'middle';
       canvasContext.fillStyle = '#444';
 
-      for (let h = 0; h < 24; h++) {
-        // Logic follows local pointer: 12 is at top (-PI/2)
-        const angle = ((h - 12) * Math.PI / 12) - Math.PI / 2;
-        const x = numberRadius * Math.cos(angle);
-        const y = numberRadius * Math.sin(angle);
+      for (let i = 0; i < 24; i++) {
+        const angle = (i * Math.PI / 12) - Math.PI / 2;
+        const x = numberDistance * Math.cos(angle);
+        const y = numberDistance * Math.sin(angle);
 
         canvasContext.save();
         canvasContext.translate(x, y);
 
-        // Top half (6 to 18): Tops point outward
-        if (h >= 6 && h <= 18) {
+        // Logic: 6 to 18 point outward (away from center)
+        // 19 to 5 point inward (toward center)
+        if (i >= 6 && i <= 18) {
           canvasContext.rotate(angle + Math.PI / 2);
         } else {
-          // Bottom half (19 to 5): Tops point inward (flip 180 degrees)
           canvasContext.rotate(angle - Math.PI / 2);
         }
 
-        canvasContext.fillText(h, 0, 0);
+        canvasContext.fillText(i, 0, 0);
         canvasContext.restore();
       }
     }
@@ -311,6 +307,7 @@
       const now = new Date();
       const localHoursFloat = now.getHours() + (now.getMinutes() / 60) + (now.getSeconds() / 3600);
       const angle = ((localHoursFloat - 12) * Math.PI / 12) - Math.PI / 2;
+
       const pointerLen = radius * 0.12;
       const pointerWidth = pointerLen / 2.2;
 
@@ -385,6 +382,24 @@
       updateLocalTime();
     });
 
+    let touchStartX = 0;
+    timeZoneSliderElement.addEventListener('touchstart', e => {
+      touchStartX = e.touches[0].clientX;
+    }, {passive: false});
+
+    timeZoneSliderElement.addEventListener('touchend', e => {
+      const touchEndX = e.changedTouches[0].clientX;
+      const diff = touchEndX - touchStartX;
+      if (Math.abs(diff) > 50) {
+        if (diff > 0) {
+           currentZoneIndex = (currentZoneIndex - 1 + timeZones.length) % timeZones.length;
+        } else {
+           currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
+        }
+        updateLocalTime();
+      }
+    }, {passive: false});
+
     onWindowResize();
     setInterval(() => {
       drawClockFace();
@@ -394,4 +409,3 @@
   </script>
 </body>
 </html>
-
