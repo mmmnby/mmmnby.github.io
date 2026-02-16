@@ -142,6 +142,7 @@
     function drawClockFace() {
       const size   = parseFloat(clockCanvasElement.style.width);
       const center = size / 2;
+      //  
       const radius = center * 0.95; 
 
       canvasContext.clearRect(0, 0, size, size);
@@ -149,7 +150,7 @@
       canvasContext.save();
       canvasContext.translate(center, center);
 
-      const mapRadius = radius * 0.55; // Slightly smaller to make room for outer ring
+      const mapRadius = radius * 0.55; 
       
       // 1. Draw Map
       canvasContext.save();
@@ -166,11 +167,11 @@
       canvasContext.restore();
 
       // 2. Overlays and Rings
-      
       drawClockBorder(radius, mapRadius);
-      drawOuterTickRing(radius); // Added outer ring
+      drawOuterTickRing(radius); 
+      drawOuterNumberRing(radius); // Added the 0-23 ring
       drawHourNumbersAndCities(radius, mapRadius);
-      drawLocalTimePointer(radius); // Moved pointer to outer ring
+      drawLocalTimePointer(radius); 
       
       canvasContext.restore();
     }
@@ -183,7 +184,6 @@
       canvasContext.stroke();
     }
 
-    // New function to draw the outermost ring with 24 ticks
     function drawOuterTickRing(radius) {
       canvasContext.beginPath();
       canvasContext.arc(0, 0, radius, 0, Math.PI * 2);
@@ -201,6 +201,37 @@
         canvasContext.lineWidth = 2;
         canvasContext.strokeStyle = '#333';
         canvasContext.stroke();
+      }
+    }
+
+    // New function to draw numbers 0-23 outside the tick ring
+    function drawOuterNumberRing(radius) {
+      const numberRadius = radius * 1.12; 
+      const fontSize = radius * 0.06;
+      canvasContext.font = `bold ${fontSize}px sans-serif`;
+      canvasContext.textAlign = 'center';
+      canvasContext.textBaseline = 'middle';
+      canvasContext.fillStyle = '#444';
+
+      for (let h = 0; h < 24; h++) {
+        // Logic follows local pointer: 12 is at top (-PI/2)
+        const angle = ((h - 12) * Math.PI / 12) - Math.PI / 2;
+        const x = numberRadius * Math.cos(angle);
+        const y = numberRadius * Math.sin(angle);
+
+        canvasContext.save();
+        canvasContext.translate(x, y);
+
+        // Top half (6 to 18): Tops point outward
+        if (h >= 6 && h <= 18) {
+          canvasContext.rotate(angle + Math.PI / 2);
+        } else {
+          // Bottom half (19 to 5): Tops point inward (flip 180 degrees)
+          canvasContext.rotate(angle - Math.PI / 2);
+        }
+
+        canvasContext.fillText(h, 0, 0);
+        canvasContext.restore();
       }
     }
 
@@ -276,66 +307,40 @@
       });
     }
 
-
     function drawLocalTimePointer(radius) {
-  const now = new Date();
-  // Smooth movement: hours + fraction of minutes + fraction of seconds
-  const localHoursFloat = now.getHours() + (now.getMinutes() / 60) + (now.getSeconds() / 3600);
-  
-  // Angle calculation (mapping 24h to 360 degrees)
-  const angle = ((localHoursFloat - 12) * Math.PI / 12) - Math.PI / 2;
-
-  const pointerLen = radius * 0.12;
-  const pointerWidth = pointerLen / 2.2;
-
-  canvasContext.save();
-  canvasContext.rotate(angle);
-  canvasContext.translate(radius, 0); 
-
-  // 1. Create a stylish gradient from tip to base
-  const gradient = canvasContext.createLinearGradient(0, 0, pointerLen, 0);
-  gradient.addColorStop(0, '#ff4d4d'); // Brighter red at the tip
-  gradient.addColorStop(1, '#991900'); // Deep crimson at the base
-
-  // 2. Define the triangle path
-  canvasContext.beginPath();
-  canvasContext.moveTo(0, 0);                      // The sharp tip pointing inward
-  canvasContext.lineTo(pointerLen, -pointerWidth); // Top corner of base
-  canvasContext.lineTo(pointerLen, pointerWidth);  // Bottom corner of base
-  canvasContext.closePath();
-
-  // 3. Add a soft drop shadow for "lift"
-  canvasContext.shadowBlur = 6;
-  canvasContext.shadowColor = 'rgba(0, 0, 0, 0.4)';
-  canvasContext.shadowOffsetX = 2;
-
-  // 4. Fill with our gradient
-  canvasContext.fillStyle = gradient;
-  canvasContext.fill();
-
-  // 5. Add the clean white border (outline)
-  canvasContext.shadowBlur = 0; // Disable shadow for the stroke so it stays crisp
-  canvasContext.strokeStyle = '#ffffff';
-  canvasContext.lineWidth = 2;
-  canvasContext.lineJoin = 'round'; // Smooths out the corners of the triangle
-  canvasContext.stroke();
-
-  canvasContext.restore();
-}
-
-
-
-    function drawDayNightOverlay(mapRadius) {
-      const nowUtc = new Date();
-      const h = nowUtc.getUTCHours() + nowUtc.getUTCMinutes()/60;
-      const angle = -(h / 24) * Math.PI * 2; 
+      const now = new Date();
+      const localHoursFloat = now.getHours() + (now.getMinutes() / 60) + (now.getSeconds() / 3600);
+      const angle = ((localHoursFloat - 12) * Math.PI / 12) - Math.PI / 2;
+      const pointerLen = radius * 0.12;
+      const pointerWidth = pointerLen / 2.2;
 
       canvasContext.save();
-      canvasContext.rotate(angle + Math.PI); 
+      canvasContext.rotate(angle);
+      canvasContext.translate(radius, 0); 
+
+      const gradient = canvasContext.createLinearGradient(0, 0, pointerLen, 0);
+      gradient.addColorStop(0, '#ff4d4d'); 
+      gradient.addColorStop(1, '#991900'); 
+
       canvasContext.beginPath();
-      canvasContext.arc(0, 0, mapRadius, 0, Math.PI); 
-      canvasContext.fillStyle = 'rgba(0, 0, 50, 0.3)';
+      canvasContext.moveTo(0, 0);                      
+      canvasContext.lineTo(pointerLen, -pointerWidth); 
+      canvasContext.lineTo(pointerLen, pointerWidth);  
+      canvasContext.closePath();
+
+      canvasContext.shadowBlur = 6;
+      canvasContext.shadowColor = 'rgba(0, 0, 0, 0.4)';
+      canvasContext.shadowOffsetX = 2;
+
+      canvasContext.fillStyle = gradient;
       canvasContext.fill();
+
+      canvasContext.shadowBlur = 0; 
+      canvasContext.strokeStyle = '#ffffff';
+      canvasContext.lineWidth = 2;
+      canvasContext.lineJoin = 'round'; 
+      canvasContext.stroke();
+
       canvasContext.restore();
     }
 
@@ -380,24 +385,6 @@
       updateLocalTime();
     });
 
-    let touchStartX = 0;
-    timeZoneSliderElement.addEventListener('touchstart', e => {
-      touchStartX = e.touches[0].clientX;
-    }, {passive: false});
-
-    timeZoneSliderElement.addEventListener('touchend', e => {
-      const touchEndX = e.changedTouches[0].clientX;
-      const diff = touchEndX - touchStartX;
-      if (Math.abs(diff) > 50) {
-        if (diff > 0) {
-           currentZoneIndex = (currentZoneIndex - 1 + timeZones.length) % timeZones.length;
-        } else {
-           currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
-        }
-        updateLocalTime();
-      }
-    }, {passive: false});
-
     onWindowResize();
     setInterval(() => {
       drawClockFace();
@@ -407,5 +394,4 @@
   </script>
 </body>
 </html>
-
 
