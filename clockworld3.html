@@ -276,41 +276,53 @@
       });
     }
 
-    // UPDATED: Points to local time on the outer ring, pointing inward
-        function drawLocalTimePointer(radius) {
-      const now = new Date();
-      // Use local hours and minutes for a smooth sweep
-      const localHoursFloat = now.getHours() + (now.getMinutes() / 60) + (now.getSeconds() / 3600);
-      
-      // Map 12h to Top, 18h to Right, 0h to Bottom
-      // (localHoursFloat - 12) centers the calculation around the 12 o'clock position
-      const angle = ((localHoursFloat - 12) * Math.PI / 12) - Math.PI / 2;
 
-      const handLen = radius * 0.12;
-      canvasContext.save();
-      
-      // Rotate the entire context to the calculated angle
-      canvasContext.rotate(angle);
-      
-      // Move to the outer tick ring. 
-      // We translate to the radius so the pointer "lays over" the ring
-      canvasContext.translate(radius, 0); 
-      
-      canvasContext.beginPath();
-      // Draw a triangle pointing inward toward the center
-      // 0,0 is now on the tick ring thanks to translate()
-      canvasContext.moveTo(0, 0); 
-      canvasContext.lineTo(handLen, -handLen/2.5);
-      canvasContext.lineTo(handLen, handLen/2.5);
-      canvasContext.closePath();
-      
-      canvasContext.fillStyle = 'red';
-      canvasContext.shadowBlur = 10;
-      canvasContext.shadowColor = 'rgba(0,0,0,0.3)';
-      canvasContext.fill();
-      
-      canvasContext.restore();
-    }
+    function drawLocalTimePointer(radius) {
+  const now = new Date();
+  // Smooth movement: hours + fraction of minutes + fraction of seconds
+  const localHoursFloat = now.getHours() + (now.getMinutes() / 60) + (now.getSeconds() / 3600);
+  
+  // Angle calculation (mapping 24h to 360 degrees)
+  const angle = ((localHoursFloat - 12) * Math.PI / 12) - Math.PI / 2;
+
+  const pointerLen = radius * 0.12;
+  const pointerWidth = pointerLen / 2.2;
+
+  canvasContext.save();
+  canvasContext.rotate(angle);
+  canvasContext.translate(radius, 0); 
+
+  // 1. Create a stylish gradient from tip to base
+  const gradient = canvasContext.createLinearGradient(0, 0, pointerLen, 0);
+  gradient.addColorStop(0, '#ff4d4d'); // Brighter red at the tip
+  gradient.addColorStop(1, '#8b0000'); // Deep crimson at the base
+
+  // 2. Define the triangle path
+  canvasContext.beginPath();
+  canvasContext.moveTo(0, 0);                      // The sharp tip pointing inward
+  canvasContext.lineTo(pointerLen, -pointerWidth); // Top corner of base
+  canvasContext.lineTo(pointerLen, pointerWidth);  // Bottom corner of base
+  canvasContext.closePath();
+
+  // 3. Add a soft drop shadow for "lift"
+  canvasContext.shadowBlur = 6;
+  canvasContext.shadowColor = 'rgba(0, 0, 0, 0.4)';
+  canvasContext.shadowOffsetX = 2;
+
+  // 4. Fill with our gradient
+  canvasContext.fillStyle = gradient;
+  canvasContext.fill();
+
+  // 5. Add the clean white border (outline)
+  canvasContext.shadowBlur = 0; // Disable shadow for the stroke so it stays crisp
+  canvasContext.strokeStyle = '#ffffff';
+  canvasContext.lineWidth = 2;
+  canvasContext.lineJoin = 'round'; // Smooths out the corners of the triangle
+  canvasContext.stroke();
+
+  canvasContext.restore();
+}
+
 
 
     function drawDayNightOverlay(mapRadius) {
