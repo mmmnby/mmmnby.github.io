@@ -1,3 +1,8 @@
+You have iq200
+
+Add logic to allow adjusting of green arrow orbit radius 
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,7 +14,7 @@
       margin: 0;
       padding: 0;
       height: 100%;
-      background: linear-gradient(to bottom, #e0f0ff, #DEEEFF);
+      background: linear-gradient(to bottom, #e0f0ff, #a0d0ff);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -84,13 +89,11 @@
     const radiusConfig = {
       tickRing: 0.90,       // The ring with the tick marks
       staticNumbers: 0.95,  // The 0-23 numbers surrounding the clock
-      redArrow: 0.88,       // The orbit path of the red arrow (Hour)
-      greenArrowt: 0.70      // The orbit path of the green arrow (Minute) [NEW]
+      redArrow: 0.88        // The orbit path of the red arrow
     };
     // --- CONFIGURATION END ---
 
     const worldMapImage = new Image();
-    // Placeholder image logic
     worldMapImage.src = 'worldmap.jpg'; 
     worldMapImage.onload = onWindowResize;
 
@@ -157,10 +160,7 @@
       // Calculate specific radii based on configuration scalars
       const tickRingRadius = center * radiusConfig.tickRing;
       const staticNumberRadius = center * radiusConfig.staticNumbers;
-      
-      // Separate orbit calculations
-      const redArrowOrbitRadius = center * radiusConfig.redArrow;
-      const greenArrowOrbitRadius = center * radiusConfig.greenArrow;
+      const arrowOrbitRadius = center * radiusConfig.redArrow;
       
       // Keep internal logic consistent using a standard base radius (synced with ticks)
       const baseRadius = tickRingRadius; 
@@ -188,16 +188,20 @@
       drawClockBorder(baseRadius, mapRadius);
       
       // Pass specific calculated radii to the distinct functions
-      drawOuterTickRing(tickRingRadius); 
-      drawOuterStaticNumberRing(staticNumberRadius); 
-      drawHourNumbersAndCities(baseRadius, mapRadius);
       
-      // Draw pointers with their INDEPENDENT radii
-      drawLocalTimePointer(redArrowOrbitRadius);   // The Red 24h Hand
-      drawMinutePointer(greenArrowOrbitRadius);    // The Green Minute Hand
-      
-      canvasContext.restore();
-    }
+
+  drawOuterTickRing(tickRingRadius); 
+  drawOuterStaticNumberRing(staticNumberRadius); 
+  drawHourNumbersAndCities(baseRadius, mapRadius);
+  
+  // Draw both pointers
+  drawLocalTimePointer(arrowOrbitRadius); // The Red 24h Hand
+  drawMinutePointer(arrowOrbitRadius);    // The Yellow Minute Hand
+  
+  canvasContext.restore();
+}
+
+    
 
     function drawClockBorder(outerRadius, innerRadius) {
       canvasContext.beginPath();
@@ -208,38 +212,44 @@
     }
 
     function drawOuterTickRing(radius) {
-      canvasContext.beginPath();
-      canvasContext.arc(0, 0, radius, 0, Math.PI * 2);
-      canvasContext.lineWidth = 3.5;
-      canvasContext.strokeStyle = '#666';
-      canvasContext.stroke();
+  // Draw the circular track
+  canvasContext.beginPath();
+  canvasContext.arc(0, 0, radius, 0, Math.PI * 2);
+  canvasContext.lineWidth = 3.5;
+  canvasContext.strokeStyle = '#666';
+  canvasContext.stroke();
 
-      const totalTicks = 60;
-      const majorTickInterval = 5; 
+  const totalTicks = 60;
+  const majorTickInterval = 5; // 60 ticks / 12 major = every 5th tick
 
-      for (let i = 0; i < totalTicks; i++) {
-        const angle = (i * Math.PI / 30) - Math.PI / 2;
-        
-        const majorTickLen = radius * 0.06;      
-        const minorTickLen = majorTickLen * 0.66; 
+  for (let i = 0; i < totalTicks; i++) {
+    // Calculate angle: 360 degrees / 60 = 6 degrees (Math.PI / 30) per tick
+    const angle = (i * Math.PI / 30) - Math.PI / 2;
+    
+    const majorTickLen = radius * 0.06;      // Base height for major ticks
+    const minorTickLen = majorTickLen * 0.66; // 66% of major height
 
-        const isMajor = (i % majorTickInterval === 0);
-        const currentTickLen = isMajor ? majorTickLen : minorTickLen;
+    const isMajor = (i % majorTickInterval === 0);
+    const currentTickLen = isMajor ? majorTickLen : minorTickLen;
 
-        canvasContext.beginPath();
-        canvasContext.moveTo(radius * Math.cos(angle), radius * Math.sin(angle));
-        canvasContext.lineTo(
-          (radius - currentTickLen) * Math.cos(angle), 
-          (radius - currentTickLen) * Math.sin(angle)
-        );
+    canvasContext.beginPath();
+    canvasContext.moveTo(radius * Math.cos(angle), radius * Math.sin(angle));
+    canvasContext.lineTo(
+      (radius - currentTickLen) * Math.cos(angle), 
+      (radius - currentTickLen) * Math.sin(angle)
+    );
 
-        canvasContext.lineWidth = isMajor ? 2.5 : 1.2;
-        canvasContext.strokeStyle = isMajor ? '#333' : '#888';
-        canvasContext.stroke();
-      }
-    }
+    // Styling: Major ticks are slightly thicker/darker for visual hierarchy
+    canvasContext.lineWidth = isMajor ? 2.5 : 1.2;
+    canvasContext.strokeStyle = isMajor ? '#333' : '#888';
+    canvasContext.stroke();
+  }
+}
 
+
+    // Updated to accept a specific radius for the numbers
     function drawOuterStaticNumberRing(radius) {
+      // Scale font based on the radius to keep proportions
       const numFontSize = radius * 0.06; 
       
       canvasContext.font = `bold ${numFontSize}px sans-serif`;
@@ -338,6 +348,7 @@
       });
     }
 
+    // Updated to accept specific orbit radius
     function drawLocalTimePointer(orbitRadius) {
       const now = new Date();
       const localHoursFloat = now.getHours() + (now.getMinutes() / 60) + (now.getSeconds() / 3600);
@@ -377,48 +388,47 @@
 
       canvasContext.restore();
     }
+function drawMinutePointer(orbitRadius) {
+  const now = new Date();
+  // Minute logic: (Current Minutes + fractional seconds) / 60 
+  const minutesFloat = now.getMinutes() + (now.getSeconds() / 60);
+  
+  // Angle: 2π radians per 60 minutes. -Math.PI/2 sets 0 mins to the TOP.
+  const angle = (minutesFloat * Math.PI / 30) - Math.PI / 2;
 
-    function drawMinutePointer(orbitRadius) {
-      const now = new Date();
-      // Minute logic: (Current Minutes + fractional seconds) / 60 
-      const minutesFloat = now.getMinutes() + (now.getSeconds() / 60);
-      
-      // Angle: 2π radians per 60 minutes. -Math.PI/2 sets 0 mins to the TOP.
-      const angle = (minutesFloat * Math.PI / 30) - Math.PI / 2;
+  // 60% size of the original red arrow proportions
+  const pointerLen = (orbitRadius * 0.13) * 0.60; 
+  const pointerWidth = pointerLen / 2.2;
 
-      // 60% size of the original red arrow proportions
-      const pointerLen = (orbitRadius * 0.13) * 0.60; 
-      const pointerWidth = pointerLen / 2.2;
+  canvasContext.save();
+  canvasContext.rotate(angle);
+  canvasContext.translate(orbitRadius, 0); 
 
-      canvasContext.save();
-      canvasContext.rotate(angle);
-      canvasContext.translate(orbitRadius, 0); 
+  // green Gradient
+  const gradient = canvasContext.createLinearGradient(0, 0, pointerLen, 0);
+  gradient.addColorStop(0, '#FF00FF'); // Bright green
+  gradient.addColorStop(1, '#D100D1'); // Golden green
 
-      // green Gradient
-      const gradient = canvasContext.createLinearGradient(0, 0, pointerLen, 0);
-      gradient.addColorStop(0, '#FF00FF'); // Bright pink
-      gradient.addColorStop(1, '#D100D1'); // Golden green
+  canvasContext.beginPath();
+  canvasContext.moveTo(0, 0);                      
+  canvasContext.lineTo(-pointerLen, -pointerWidth); 
+  canvasContext.lineTo(-pointerLen, pointerWidth);  
+  canvasContext.closePath();
 
-      canvasContext.beginPath();
-      canvasContext.moveTo(0, 0);                      
-      canvasContext.lineTo(-pointerLen, -pointerWidth); 
-      canvasContext.lineTo(-pointerLen, pointerWidth);  
-      canvasContext.closePath();
+  // Subtle shadow for depth
+  canvasContext.shadowBlur = 4;
+  canvasContext.shadowColor = 'rgba(0, 0, 0, 0.3)';
+  
+  canvasContext.fillStyle = gradient;
+  canvasContext.fill();
 
-      // Subtle shadow for depth
-      canvasContext.shadowBlur = 4;
-      canvasContext.shadowColor = 'rgba(0, 0, 0, 0.3)';
-      
-      canvasContext.fillStyle = gradient;
-      canvasContext.fill();
+  canvasContext.strokeStyle = '#ffffff';
+  canvasContext.lineWidth = 1.5;
+  canvasContext.lineJoin = 'round'; 
+  canvasContext.stroke();
 
-      canvasContext.strokeStyle = '#ffffff';
-      canvasContext.lineWidth = 1.5;
-      canvasContext.lineJoin = 'round'; 
-      canvasContext.stroke();
-
-      canvasContext.restore();
-    }
+  canvasContext.restore();
+}
 
     function updateDigitalClock() {
       const now = new Date();
@@ -488,4 +498,5 @@
   </script>
 </body>
 </html>
+
 
