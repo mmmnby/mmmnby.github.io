@@ -391,18 +391,18 @@ function drawMinutePointer(orbitRadius) {
   // Angle: 2π radians per 60 minutes. -Math.PI/2 sets 0 mins to the TOP.
   const angle = (minutesFloat * Math.PI / 30) - Math.PI / 2;
 
-  // 66% size of the original red arrow proportions
-  const pointerLen = (orbitRadius * 0.13) * 0.66; 
+  // 50% size of the original red arrow proportions
+  const pointerLen = (orbitRadius * 0.13) * 0.50; 
   const pointerWidth = pointerLen / 2.2;
 
   canvasContext.save();
   canvasContext.rotate(angle);
   canvasContext.translate(orbitRadius, 0); 
 
-  // Yellow Gradient
+  // green Gradient
   const gradient = canvasContext.createLinearGradient(0, 0, pointerLen, 0);
-  gradient.addColorStop(0, '#ffff00'); // Bright Yellow
-  gradient.addColorStop(1, '#ffcc00'); // Golden Yellow
+  gradient.addColorStop(0, '#99ff33'); // Bright green
+  gradient.addColorStop(1, '#264d00'); // Golden green
 
   canvasContext.beginPath();
   canvasContext.moveTo(0, 0);                      
