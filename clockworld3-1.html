@@ -79,32 +79,31 @@
 
   <script>
     /**
-     * --- RADIUS COEFFICIENT CONFIGURATION ---
-     * All values are ratios relative to the "Universal Radius" (Canvas Center).
-     * To maintain exact previous dimensions:
-     * - Tick Ring was 0.90
-     * - Map was 55% of Tick Ring (0.90 * 0.55 = 0.495)
+     * MASTER RADIUS CONFIGURATION
+     * All elements use a coefficient multiplied by the Universal Radius.
+     * The coefficients below are calculated to match the previous design's dimensions exactly.
      */
-    const RAD_COEFF = {
-      OUTER_NUMBERS:    0.95,    // Static 0-23 scale
-      TICK_RING:        0.90,    // The 60-minute tick track
-      CITY_NAMES:       0.6975,  // Map + (Tick - Map) * 0.50
-      MOVING_NUMBERS:   0.55575, // Map + (Tick - Map) * 0.15
-      WORLD_MAP:        0.495,   // Inner circular map clip
-      RED_ARROW_ORBIT:  0.88,    // Local 24h pointer orbit
-      MIN_ARROW_ORBIT:  0.88     // Minute pointer orbit
+    const RADIUS_COEFFICIENTS = {
+      outerTickRing: 0.90,             // The boundary of the clock face
+      staticNumbers: 0.95,            // The numbers 0-23 outside the ticks
+      redArrowOrbit: 0.88,            // Orbit radius for the Red Hour Hand
+      magentaArrowOrbit: 0.88,        // Orbit radius for the Magenta Minute Hand
+      worldMap: 0.495,                // 0.90 (tick ring) * 0.55 (original scalar)
+      hourNumberRing: 0.55575,        // Calculated: mapRadius + (tickRing - mapRadius) * 0.15
+      cityLabelRing: 0.6975,          // Calculated: mapRadius + (tickRing - mapRadius) * 0.50
+      cityLabelStagger: 0.072         // Calculated: tickRing * 0.08
     };
 
     const worldMapImage = new Image();
     worldMapImage.src = 'worldmap.jpg'; 
     worldMapImage.onload = onWindowResize;
 
-    const clockCanvasElement    = document.getElementById('clockCanvas');
-    const canvasContext         = clockCanvasElement.getContext('2d');
-    const digitalClockElement   = document.getElementById('digitalClock');
-    const localTimeElement      = document.getElementById('localTimeDisplay');
-    const increaseZoneButton    = document.getElementById('increaseZoneButton');
-    const decreaseZoneButton    = document.getElementById('decreaseZoneButton');
+    const clockCanvasElement = document.getElementById('clockCanvas');
+    const canvasContext = clockCanvasElement.getContext('2d');
+    const digitalClockElement = document.getElementById('digitalClock');
+    const localTimeDisplayElement = document.getElementById('localTimeDisplay');
+    const increaseZoneButton = document.getElementById('increaseZoneButton');
+    const decreaseZoneButton = document.getElementById('decreaseZoneButton');
     const timeZoneSliderElement = document.getElementById('timeZoneSlider');
 
     const timeZones = [
@@ -123,54 +122,63 @@
     ];
 
     const browserUtcOffset = -new Date().getTimezoneOffset() / 60;
-    let currentZoneIndex = timeZones.findIndex(z => z.offset === browserUtcOffset);
+    let currentZoneIndex = timeZones.findIndex(zone => zone.offset === browserUtcOffset);
     if (currentZoneIndex < 0) currentZoneIndex = 11; 
 
     function onWindowResize() {
       const canvasSize = Math.min(window.innerWidth, window.innerHeight) * 0.85;
-      const dpr = window.devicePixelRatio || 1;
+      const devicePixelRatio = window.devicePixelRatio || 1;
+      
       clockCanvasElement.style.width = canvasSize + "px";
       clockCanvasElement.style.height = canvasSize + "px";
-      clockCanvasElement.width = canvasSize * dpr;
-      clockCanvasElement.height = canvasSize * dpr;
-      canvasContext.scale(dpr, dpr);
-      render();
+      clockCanvasElement.width = canvasSize * devicePixelRatio;
+      clockCanvasElement.height = canvasSize * devicePixelRatio;
+      canvasContext.scale(devicePixelRatio, devicePixelRatio);
+
+      drawClockFace();
+      updateDigitalClock();
+      updateLocalTimeDisplay();
     }
 
     window.addEventListener('resize', onWindowResize);
     window.addEventListener('orientationchange', onWindowResize);
 
     function drawClockFace() {
-      const size    = parseFloat(clockCanvasElement.style.width);
-      const uRadius = size / 2; // UNIVERSAL RADIUS
+      const canvasWidth = parseFloat(clockCanvasElement.style.width);
+      const universalRadius = canvasWidth / 2;
       
-      canvasContext.clearRect(0, 0, size, size);
+      canvasContext.clearRect(0, 0, canvasWidth, canvasWidth);
       canvasContext.save();
-      canvasContext.translate(uRadius, uRadius);
+      canvasContext.translate(universalRadius, universalRadius);
 
-      // 1. Draw Map
-      const mapR = uRadius * RAD_COEFF.WORLD_MAP;
+      // 1. Draw Central World Map
+      const mapRadius = universalRadius * RADIUS_COEFFICIENTS.worldMap;
       canvasContext.save();
       canvasContext.beginPath();
-      canvasContext.arc(0, 0, mapR, 0, Math.PI * 2);
+      canvasContext.arc(0, 0, mapRadius, 0, Math.PI * 2);
       canvasContext.clip();
+
       if (worldMapImage.complete && worldMapImage.naturalWidth > 0) {
-        canvasContext.drawImage(worldMapImage, -mapR, -mapR, mapR * 2, mapR * 2);
+        canvasContext.drawImage(worldMapImage, -mapRadius, -mapRadius, mapRadius * 2, mapRadius * 2);
       } else {
         canvasContext.fillStyle = '#a0d0ff';
         canvasContext.fill();
       }
       canvasContext.restore();
 
-      // 2. Draw Components using coefficients
-      drawClockBorder(mapR);
-      drawOuterTickRing(uRadius * RAD_COEFF.TICK_RING); 
-      drawOuterStaticNumberRing(uRadius * RAD_COEFF.OUTER_NUMBERS); 
-      drawInnerMovingRing(uRadius);
+      // 2. Draw Borders and Tick Marks
+      drawClockBorder(mapRadius);
+      drawOuterTickRing(universalRadius * RADIUS_COEFFICIENTS.outerTickRing);
       
-      // 3. Draw Orbiting Pointers individually referencing Universal Radius
-      drawLocalTimePointer(uRadius * RAD_COEFF.RED_ARROW_ORBIT);
-      drawMinutePointer(uRadius * RAD_COEFF.MIN_ARROW_ORBIT);
+      // 3. Draw Static Outer Numbers
+      drawOuterStaticNumberRing(universalRadius * RADIUS_COEFFICIENTS.staticNumbers);
+      
+      // 4. Draw Moving City and Hour Rings
+      drawHourNumbersAndCities(universalRadius);
+      
+      // 5. Draw Orbiting Pointers
+      drawLocalTimePointer(universalRadius * RADIUS_COEFFICIENTS.redArrowOrbit);
+      drawMinutePointer(universalRadius * RADIUS_COEFFICIENTS.magentaArrowOrbit);
       
       canvasContext.restore();
     }
@@ -183,29 +191,34 @@
       canvasContext.stroke();
     }
 
-    function drawOuterTickRing(radius) {
+    function drawOuterTickRing(specificRadius) {
       canvasContext.beginPath();
-      canvasContext.arc(0, 0, radius, 0, Math.PI * 2);
+      canvasContext.arc(0, 0, specificRadius, 0, Math.PI * 2);
       canvasContext.lineWidth = 3.5;
       canvasContext.strokeStyle = '#666';
       canvasContext.stroke();
 
       for (let i = 0; i < 60; i++) {
         const angle = (i * Math.PI / 30) - Math.PI / 2;
+        const majorTickLength = specificRadius * 0.06;
+        const minorTickLength = majorTickLength * 0.66;
         const isMajor = (i % 5 === 0);
-        const tickLen = isMajor ? radius * 0.06 : (radius * 0.06) * 0.66;
+        const currentTickLength = isMajor ? majorTickLength : minorTickLength;
 
         canvasContext.beginPath();
-        canvasContext.moveTo(radius * Math.cos(angle), radius * Math.sin(angle));
-        canvasContext.lineTo((radius - tickLen) * Math.cos(angle), (radius - tickLen) * Math.sin(angle));
+        canvasContext.moveTo(specificRadius * Math.cos(angle), specificRadius * Math.sin(angle));
+        canvasContext.lineTo(
+          (specificRadius - currentTickLength) * Math.cos(angle), 
+          (specificRadius - currentTickLength) * Math.sin(angle)
+        );
         canvasContext.lineWidth = isMajor ? 2.5 : 1.2;
         canvasContext.strokeStyle = isMajor ? '#333' : '#888';
         canvasContext.stroke();
       }
     }
 
-    function drawOuterStaticNumberRing(radius) {
-      const fontSize = radius * 0.09; 
+    function drawOuterStaticNumberRing(specificRadius) {
+      const fontSize = specificRadius * 0.09; 
       canvasContext.font = `bold ${fontSize}px sans-serif`;
       canvasContext.textAlign = 'center';
       canvasContext.textBaseline = 'middle';
@@ -213,59 +226,77 @@
 
       for (let i = 0; i < 24; i++) {
         const angle = (i * Math.PI / 12) + Math.PI / 2;
+        const xPosition = specificRadius * Math.cos(angle);
+        const yPosition = specificRadius * Math.sin(angle);
+
         canvasContext.save();
-        canvasContext.translate(radius * Math.cos(angle), radius * Math.sin(angle));
-        canvasContext.rotate((i >= 6 && i <= 18) ? angle + Math.PI / 2 : angle - Math.PI / 2);
+        canvasContext.translate(xPosition, yPosition);
+        // Ensure numbers are upright
+        if (i >= 6 && i <= 18) {
+          canvasContext.rotate(angle + Math.PI / 2);
+        } else {
+          canvasContext.rotate(angle - Math.PI / 2);
+        }
         canvasContext.fillText(i, 0, 0);
         canvasContext.restore();
       }
     }
     
-    function drawInnerMovingRing(uRadius) {
-      const numR   = uRadius * RAD_COEFF.MOVING_NUMBERS;
-      const cityR  = uRadius * RAD_COEFF.CITY_NAMES;
-      const tickR  = uRadius * RAD_COEFF.TICK_RING;
+    function drawHourNumbersAndCities(universalRadius) {
+      // Calculate local radii from universal constants
+      const numberRingRadius = universalRadius * RADIUS_COEFFICIENTS.hourNumberRing;
+      const cityRingRadius   = universalRadius * RADIUS_COEFFICIENTS.cityLabelRing;
+      const outerReferenceRadius = universalRadius * RADIUS_COEFFICIENTS.outerTickRing;
       
-      const numFontSize = tickR * 0.05;
-      const cityFontSize = tickR * 0.055;
+      const numberFontSize = outerReferenceRadius * 0.05;
+      const cityFontSize = outerReferenceRadius * 0.055;
+      const backgroundThickness = numberFontSize * 2.2;
+
       const now = new Date();
       const currentUtcHour = now.getUTCHours(); 
 
-      // Draw Day/Night Shading
+      // Draw Day/Night background segments
       canvasContext.save();
-      canvasContext.lineWidth = numFontSize * 2.2;
-      for (let h = 0; h < 24; h++) {
-        const angle = ((currentUtcHour - h) * Math.PI / 12) - Math.PI / 2;
+      canvasContext.lineWidth = backgroundThickness;
+      for (let hour = 0; hour < 24; hour++) {
+        const angle = ((currentUtcHour - hour) * Math.PI / 12) - Math.PI / 2;
+        const isDarkSegment = (hour >= 19 || hour <= 6); 
         canvasContext.beginPath();
-        canvasContext.arc(0, 0, numR, angle - Math.PI / 24, angle + Math.PI / 24);
-        canvasContext.strokeStyle = (h >= 19 || h <= 6) ? '#1e1e1e' : '#f0f0f0';
+        canvasContext.arc(0, 0, numberRingRadius, angle - Math.PI / 24, angle + Math.PI / 24);
+        canvasContext.strokeStyle = isDarkSegment ? '#1e1e1e' : '#f0f0f0';
         canvasContext.stroke();
       }
       canvasContext.restore();
 
       // Draw Moving Numbers
-      canvasContext.font = `bold ${numFontSize}px sans-serif`;
+      canvasContext.font = `bold ${numberFontSize}px sans-serif`;
       canvasContext.textAlign = 'center';
       canvasContext.textBaseline = 'middle';
-      for (let h = 0; h < 24; h++) {
-        const angle = ((currentUtcHour - h) * Math.PI / 12) - Math.PI / 2;
+      for (let hour = 0; hour < 24; hour++) {
+        const angle = ((currentUtcHour - hour) * Math.PI / 12) - Math.PI / 2;
+        const isDarkSegment = (hour >= 19 || hour <= 6);
         canvasContext.save();
-        canvasContext.translate(numR * Math.cos(angle), numR * Math.sin(angle));
+        canvasContext.translate(numberRingRadius * Math.cos(angle), numberRingRadius * Math.sin(angle));
         canvasContext.rotate(angle - Math.PI / 2); 
-        canvasContext.fillStyle = (h >= 19 || h <= 6) ? '#ffffff' : '#222222';
-        canvasContext.fillText(h, 0, 0);
+        canvasContext.fillStyle = isDarkSegment ? '#ffffff' : '#222222';
+        canvasContext.fillText(hour, 0, 0);
         canvasContext.restore();
       }
 
-      // Draw Cities
+      // Draw City Labels
       canvasContext.font = `600 ${cityFontSize}px sans-serif`;
-      timeZones.forEach((zone, i) => {
+      timeZones.forEach((zone, index) => {
         const angle = - (Math.PI / 2) - (zone.offset * (Math.PI / 12));
-        const r = cityR + ((i % 2 === 0) ? 0 : (tickR * 0.08));
+        const staggerAmount = (index % 2 === 0) ? 0 : (universalRadius * RADIUS_COEFFICIENTS.cityLabelStagger);
+        const radiusWithStagger = cityRingRadius + staggerAmount;
+
         canvasContext.save();
-        const x = r * Math.cos(angle), y = r * Math.sin(angle);
-        canvasContext.translate(x, y);
-        canvasContext.rotate(y < -10 ? angle + Math.PI / 2 : angle - Math.PI / 2);
+        canvasContext.translate(radiusWithStagger * Math.cos(angle), radiusWithStagger * Math.sin(angle));
+        if (Math.sin(angle) < 0) {
+          canvasContext.rotate(angle + Math.PI / 2);
+        } else {
+          canvasContext.rotate(angle - Math.PI / 2);
+        }
         canvasContext.fillStyle = '#222';
         canvasContext.fillText(zone.city, 0, 0);
         canvasContext.restore();
@@ -276,23 +307,30 @@
       const now = new Date();
       const localHoursFloat = now.getHours() + (now.getMinutes() / 60) + (now.getSeconds() / 3600);
       const angle = ((localHoursFloat - 12) * Math.PI / 12) - Math.PI / 2;
-      const pLen = orbitRadius * 0.13; 
-      const pWid = pLen / 2.2;
+
+      const pointerLength = orbitRadius * 0.13; 
+      const pointerWidth = pointerLength / 2.2;
 
       canvasContext.save();
       canvasContext.rotate(angle);
       canvasContext.translate(orbitRadius, 0); 
 
-      const grad = canvasContext.createLinearGradient(0, 0, pLen, 0);
-      grad.addColorStop(0, '#ff4d4d'); grad.addColorStop(1, '#991900'); 
+      const gradient = canvasContext.createLinearGradient(0, 0, pointerLength, 0);
+      gradient.addColorStop(0, '#ff4d4d'); 
+      gradient.addColorStop(1, '#991900'); 
 
       canvasContext.beginPath();
       canvasContext.moveTo(0, 0);                      
-      canvasContext.lineTo(pLen, -pWid); canvasContext.lineTo(pLen, pWid);  
+      canvasContext.lineTo(pointerLength, -pointerWidth); 
+      canvasContext.lineTo(pointerLength, pointerWidth);  
       canvasContext.closePath();
-      canvasContext.shadowBlur = 6; canvasContext.shadowColor = 'rgba(0,0,0,0.4)';
-      canvasContext.fillStyle = grad;
+
+      canvasContext.shadowBlur = 6;
+      canvasContext.shadowColor = 'rgba(0, 0, 0, 0.4)';
+      canvasContext.fillStyle = gradient;
       canvasContext.fill();
+
+      canvasContext.shadowBlur = 0; 
       canvasContext.strokeStyle = '#ffffff';
       canvasContext.lineWidth = 2;
       canvasContext.stroke();
@@ -303,23 +341,29 @@
       const now = new Date();
       const minutesFloat = now.getMinutes() + (now.getSeconds() / 60);
       const angle = (minutesFloat * Math.PI / 30) - Math.PI / 2;
-      const pLen = (orbitRadius * 0.13) * 0.60; 
-      const pWid = pLen / 2.2;
+
+      const pointerLength = (orbitRadius * 0.13) * 0.60; 
+      const pointerWidth = pointerLength / 2.2;
 
       canvasContext.save();
       canvasContext.rotate(angle);
       canvasContext.translate(orbitRadius, 0); 
 
-      const grad = canvasContext.createLinearGradient(0, 0, pLen, 0);
-      grad.addColorStop(0, '#FF00FF'); grad.addColorStop(1, '#D100D1'); 
+      const gradient = canvasContext.createLinearGradient(0, 0, pointerLength, 0);
+      gradient.addColorStop(0, '#FF00FF'); 
+      gradient.addColorStop(1, '#D100D1'); 
 
       canvasContext.beginPath();
       canvasContext.moveTo(0, 0);                      
-      canvasContext.lineTo(-pLen, -pWid); canvasContext.lineTo(-pLen, pWid);  
+      canvasContext.lineTo(-pointerLength, -pointerWidth); 
+      canvasContext.lineTo(-pointerLength, pointerWidth);  
       canvasContext.closePath();
-      canvasContext.shadowBlur = 4; canvasContext.shadowColor = 'rgba(0,0,0,0.3)';
-      canvasContext.fillStyle = grad;
+
+      canvasContext.shadowBlur = 4;
+      canvasContext.shadowColor = 'rgba(0, 0, 0, 0.3)';
+      canvasContext.fillStyle = gradient;
       canvasContext.fill();
+
       canvasContext.strokeStyle = '#ffffff';
       canvasContext.lineWidth = 1.5;
       canvasContext.stroke();
@@ -328,39 +372,71 @@
 
     function updateDigitalClock() {
       const now = new Date();
-      digitalClockElement.textContent = `UTC: ${String(now.getUTCHours()).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')}:${String(now.getUTCSeconds()).padStart(2, '0')}`;
+      const hours = String(now.getUTCHours()).padStart(2, '0');
+      const minutes = String(now.getUTCMinutes()).padStart(2, '0');
+      const seconds = String(now.getUTCSeconds()).padStart(2, '0');
+      digitalClockElement.textContent = `UTC: ${hours}:${minutes}:${seconds}`;
     }
 
-    function updateLocalTime() {
-      const now = new Date(), utcH = now.getUTCHours(), utcM = now.getUTCMinutes(), utcS = now.getUTCSeconds();
+    function formatUtcOffset(offset) {
+      const sign = offset >= 0 ? '+' : '−';
+      return `UTC${sign}${Math.abs(offset)}`;
+    }
+
+    function updateLocalTimeDisplay() {
+      const now = new Date();
+      const utcH = now.getUTCHours();
+      const utcM = now.getUTCMinutes();
+      const utcS = now.getUTCSeconds();
       const zone = timeZones[currentZoneIndex];
-      let locH = (utcH + zone.offset + 24) % 24;
-      const offStr = `UTC${zone.offset >= 0 ? '+' : '−'}${Math.abs(zone.offset)}`;
-      localTimeElement.textContent = `${String(Math.floor(locH)).padStart(2, '0')}:${String(utcM).padStart(2, '0')}:${String(utcS).padStart(2, '0')} — ${zone.city} (${offStr})`;
+      const offset = zone.offset;
+
+      let localHour = (utcH + offset) % 24;
+      if (localHour < 0) localHour += 24;
+      
+      const hourString = String(Math.floor(localHour)).padStart(2, '0');
+      const minuteString = String(utcM).padStart(2, '0');
+      const secondString = String(utcS).padStart(2, '0');
+      const offsetString = formatUtcOffset(offset);
+      localTimeDisplayElement.textContent = `${hourString}:${minuteString}:${secondString} — ${zone.city} (${offsetString})`;
     }
 
-    function render() {
-      drawClockFace();
-      updateDigitalClock();
-      updateLocalTime();
-    }
+    increaseZoneButton.addEventListener('click', () => {
+      currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
+      updateLocalTimeDisplay();
+    });
 
-    increaseZoneButton.addEventListener('click', () => { currentZoneIndex = (currentZoneIndex + 1) % timeZones.length; updateLocalTime(); });
-    decreaseZoneButton.addEventListener('click', () => { currentZoneIndex = (currentZoneIndex - 1 + timeZones.length) % timeZones.length; updateLocalTime(); });
+    decreaseZoneButton.addEventListener('click', () => {
+      currentZoneIndex = (currentZoneIndex - 1 + timeZones.length) % timeZones.length;
+      updateLocalTimeDisplay();
+    });
 
     let touchStartX = 0;
-    timeZoneSliderElement.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, {passive: false});
-    timeZoneSliderElement.addEventListener('touchend', e => {
-      const diff = e.changedTouches[0].clientX - touchStartX;
-      if (Math.abs(diff) > 50) {
-        currentZoneIndex = (diff > 0) ? (currentZoneIndex - 1 + timeZones.length) % timeZones.length : (currentZoneIndex + 1) % timeZones.length;
-        updateLocalTime();
+    timeZoneSliderElement.addEventListener('touchstart', event => {
+      touchStartX = event.touches[0].clientX;
+    }, {passive: false});
+
+    timeZoneSliderElement.addEventListener('touchend', event => {
+      const touchEndX = event.changedTouches[0].clientX;
+      const difference = touchEndX - touchStartX;
+      if (Math.abs(difference) > 50) {
+        if (difference > 0) {
+           currentZoneIndex = (currentZoneIndex - 1 + timeZones.length) % timeZones.length;
+        } else {
+           currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
+        }
+        updateLocalTimeDisplay();
       }
     }, {passive: false});
 
     onWindowResize();
-    setInterval(render, 1000);
+    setInterval(() => {
+      drawClockFace();
+      updateDigitalClock();
+      updateLocalTimeDisplay();
+    }, 1000);
   </script>
 </body>
 </html>
+
 
