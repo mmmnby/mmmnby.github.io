@@ -1,4 +1,6 @@
 
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -81,10 +83,11 @@
 
   <script>
     // --- CONFIGURATION START ---
+    // Adjust these scalars to change radii (1.0 = Edge of canvas)
     const radiusConfig = {
-      tickRing: 0.97,       // Outermost ring
-      staticNumbers: 0.88,  // Inner to the ticks
-      pointerOrbit: 0.99    // Orbit for the inward-pointing arrows
+      tickRing: 0.90,       // The ring with the tick marks
+      staticNumbers: 0.95,  // The 0-23 numbers surrounding the clock
+      redArrow: 0.88        // The orbit path of the red arrow
     };
     // --- CONFIGURATION END ---
 
@@ -139,7 +142,10 @@
       clockCanvasElement.width = canvasSize * dpr;
       clockCanvasElement.height = canvasSize * dpr;
       canvasContext.scale(dpr, dpr);
+
       drawClockFace();
+      updateDigitalClock();
+      updateLocalTime();
     }
 
     window.addEventListener('resize', onWindowResize);
@@ -149,10 +155,12 @@
       const size   = parseFloat(clockCanvasElement.style.width);
       const center = size / 2;
       
+      // Calculate specific radii based on configuration scalars
       const tickRingRadius = center * radiusConfig.tickRing;
       const staticNumberRadius = center * radiusConfig.staticNumbers;
-      const orbitRadius = center * radiusConfig.pointerOrbit;
+      const arrowOrbitRadius = center * radiusConfig.redArrow;
       
+      // Keep internal logic consistent using a standard base radius (synced with ticks)
       const baseRadius = tickRingRadius; 
 
       canvasContext.clearRect(0, 0, size, size);
@@ -162,11 +170,11 @@
 
       const mapRadius = baseRadius * 0.55; 
       
-      // 1. Draw Map
       canvasContext.save();
       canvasContext.beginPath();
       canvasContext.arc(0, 0, mapRadius, 0, Math.PI * 2);
       canvasContext.clip();
+
       if (worldMapImage.complete && worldMapImage.naturalWidth > 0) {
         canvasContext.drawImage(worldMapImage, -mapRadius, -mapRadius, mapRadius * 2, mapRadius * 2);
       } else {
@@ -175,22 +183,23 @@
       }
       canvasContext.restore();
 
-      // 2. Draw Borders and City Rings
       drawClockBorder(baseRadius, mapRadius);
-      drawHourNumbersAndCities(baseRadius, mapRadius);
-
-      // 3. Draw Static Number Ring (Inner to Ticks)
-      drawOuterStaticNumberRing(staticNumberRadius); 
-
-      // 4. Draw Tick Ring (Outermost)
-      drawOuterTickRing(tickRingRadius); 
       
-      // 5. Draw Pointers (Last so they overlay the rings)
-      drawLocalTimePointer(orbitRadius); 
-      drawMinutePointer(orbitRadius);    
+      // Pass specific calculated radii to the distinct functions
       
-      canvasContext.restore();
-    }
+
+  drawOuterTickRing(tickRingRadius); 
+  drawOuterStaticNumberRing(staticNumberRadius); 
+  drawHourNumbersAndCities(baseRadius, mapRadius);
+  
+  // Draw both pointers
+  drawLocalTimePointer(arrowOrbitRadius); // The Red 24h Hand
+  drawMinutePointer(arrowOrbitRadius);    // The Yellow Minute Hand
+  
+  canvasContext.restore();
+}
+
+    
 
     function drawClockBorder(outerRadius, innerRadius) {
       canvasContext.beginPath();
@@ -201,32 +210,46 @@
     }
 
     function drawOuterTickRing(radius) {
-      canvasContext.beginPath();
-      canvasContext.arc(0, 0, radius, 0, Math.PI * 2);
-      canvasContext.lineWidth = 3.5;
-      canvasContext.strokeStyle = '#666';
-      canvasContext.stroke();
+  // Draw the circular track
+  canvasContext.beginPath();
+  canvasContext.arc(0, 0, radius, 0, Math.PI * 2);
+  canvasContext.lineWidth = 3.5;
+  canvasContext.strokeStyle = '#666';
+  canvasContext.stroke();
 
-      for (let i = 0; i < 60; i++) {
-        const angle = (i * Math.PI / 30) - Math.PI / 2;
-        const majorTickLen = radius * 0.06;
-        const isMajor = (i % 5 === 0);
-        const currentTickLen = isMajor ? majorTickLen : majorTickLen * 0.66;
+  const totalTicks = 60;
+  const majorTickInterval = 5; // 60 ticks / 12 major = every 5th tick
 
-        canvasContext.beginPath();
-        canvasContext.moveTo(radius * Math.cos(angle), radius * Math.sin(angle));
-        canvasContext.lineTo(
-          (radius - currentTickLen) * Math.cos(angle), 
-          (radius - currentTickLen) * Math.sin(angle)
-        );
-        canvasContext.lineWidth = isMajor ? 2.5 : 1.2;
-        canvasContext.strokeStyle = isMajor ? '#333' : '#888';
-        canvasContext.stroke();
-      }
-    }
+  for (let i = 0; i < totalTicks; i++) {
+    // Calculate angle: 360 degrees / 60 = 6 degrees (Math.PI / 30) per tick
+    const angle = (i * Math.PI / 30) - Math.PI / 2;
+    
+    const majorTickLen = radius * 0.06;      // Base height for major ticks
+    const minorTickLen = majorTickLen * 0.66; // 66% of major height
 
+    const isMajor = (i % majorTickInterval === 0);
+    const currentTickLen = isMajor ? majorTickLen : minorTickLen;
+
+    canvasContext.beginPath();
+    canvasContext.moveTo(radius * Math.cos(angle), radius * Math.sin(angle));
+    canvasContext.lineTo(
+      (radius - currentTickLen) * Math.cos(angle), 
+      (radius - currentTickLen) * Math.sin(angle)
+    );
+
+    // Styling: Major ticks are slightly thicker/darker for visual hierarchy
+    canvasContext.lineWidth = isMajor ? 2.5 : 1.2;
+    canvasContext.strokeStyle = isMajor ? '#333' : '#888';
+    canvasContext.stroke();
+  }
+}
+
+
+    // Updated to accept a specific radius for the numbers
     function drawOuterStaticNumberRing(radius) {
-      const numFontSize = radius * 0.08; 
+      // Scale font based on the radius to keep proportions
+      const numFontSize = radius * 0.09; 
+      
       canvasContext.font = `bold ${numFontSize}px sans-serif`;
       canvasContext.textAlign = 'center';
       canvasContext.textBaseline = 'middle';
@@ -239,11 +262,13 @@
 
         canvasContext.save();
         canvasContext.translate(x, y);
+
         if (i >= 6 && i <= 18) {
           canvasContext.rotate(angle + Math.PI / 2);
         } else {
           canvasContext.rotate(angle - Math.PI / 2);
         }
+
         canvasContext.fillText(i, 0, 0);
         canvasContext.restore();
       }
@@ -267,7 +292,9 @@
         const angle = ((currentUtcHour - h) * Math.PI / 12) - Math.PI / 2;
         const startAngle = angle - Math.PI / 24;
         const endAngle   = angle + Math.PI / 24;
+
         let isDarkSegment = (h >= 19 || h <= 6); 
+
         canvasContext.beginPath();
         canvasContext.arc(0, 0, numberRingRadius, startAngle, endAngle);
         canvasContext.strokeStyle = isDarkSegment ? '#1e1e1e' : '#f0f0f0';
@@ -280,101 +307,126 @@
       canvasContext.textBaseline = 'middle';
 
       for (let h = 0; h < 24; h++) {
+        const displayNumber = h;
         const angle = ((currentUtcHour - h) * Math.PI / 12) - Math.PI / 2;
+        
         const x = numberRingRadius * Math.cos(angle);
         const y = numberRingRadius * Math.sin(angle);
         const isDarkSegment = (h >= 19 || h <= 6);
+
         canvasContext.save();
         canvasContext.translate(x, y);
         canvasContext.rotate(angle - Math.PI / 2); 
         canvasContext.fillStyle = isDarkSegment ? '#ffffff' : '#222222';
-        canvasContext.fillText(h, 0, 0);
+        canvasContext.fillText(displayNumber, 0, 0);
         canvasContext.restore();
       }
 
       canvasContext.font = `600 ${cityFontSize}px sans-serif`;
+      const offsetAngle = - (Math.PI / 2); 
+
       timeZones.forEach((zone, i) => {
-        const angle = - (Math.PI / 2) - (zone.offset * (Math.PI / 12));
+        const angle = offsetAngle - (zone.offset * (Math.PI / 12));
         const stagger = (i % 2 === 0) ? 0 : (outerRadius * 0.08);
         const r = cityRingRadius + stagger;
+
         const x = r * Math.cos(angle);
         const y = r * Math.sin(angle);
+
         canvasContext.save();
         canvasContext.translate(x, y);
-        if (y < -10) canvasContext.rotate(angle + Math.PI / 2);
-        else canvasContext.rotate(angle - Math.PI / 2);
+        if (y < -10) {
+          canvasContext.rotate(angle + Math.PI / 2);
+        } else {
+          canvasContext.rotate(angle - Math.PI / 2);
+        }
         canvasContext.fillStyle = '#222';
         canvasContext.fillText(zone.city, 0, 0);
         canvasContext.restore();
       });
     }
 
+    // Updated to accept specific orbit radius
     function drawLocalTimePointer(orbitRadius) {
       const now = new Date();
       const localHoursFloat = now.getHours() + (now.getMinutes() / 60) + (now.getSeconds() / 3600);
       const angle = ((localHoursFloat - 12) * Math.PI / 12) - Math.PI / 2;
 
-      const pointerLen = orbitRadius * 0.18; 
+      // Calculate pointer length relative to its orbit radius
+      const pointerLen = orbitRadius * 0.13; 
       const pointerWidth = pointerLen / 2.2;
 
       canvasContext.save();
       canvasContext.rotate(angle);
+      // Translate to the specific orbit radius passed in config
       canvasContext.translate(orbitRadius, 0); 
 
-      const gradient = canvasContext.createLinearGradient(0, 0, -pointerLen, 0);
+      const gradient = canvasContext.createLinearGradient(0, 0, pointerLen, 0);
       gradient.addColorStop(0, '#ff4d4d'); 
       gradient.addColorStop(1, '#991900'); 
 
       canvasContext.beginPath();
       canvasContext.moveTo(0, 0);                      
-      canvasContext.lineTo(-pointerLen, -pointerWidth); 
-      canvasContext.lineTo(-pointerLen, pointerWidth);  
+      canvasContext.lineTo(pointerLen, -pointerWidth); 
+      canvasContext.lineTo(pointerLen, pointerWidth);  
       canvasContext.closePath();
 
       canvasContext.shadowBlur = 6;
       canvasContext.shadowColor = 'rgba(0, 0, 0, 0.4)';
+      canvasContext.shadowOffsetX = 2;
+
       canvasContext.fillStyle = gradient;
       canvasContext.fill();
 
+      canvasContext.shadowBlur = 0; 
       canvasContext.strokeStyle = '#ffffff';
       canvasContext.lineWidth = 2;
+      canvasContext.lineJoin = 'round'; 
       canvasContext.stroke();
+
       canvasContext.restore();
     }
+function drawMinutePointer(orbitRadius) {
+  const now = new Date();
+  // Minute logic: (Current Minutes + fractional seconds) / 60 
+  const minutesFloat = now.getMinutes() + (now.getSeconds() / 60);
+  
+  // Angle: 2π radians per 60 minutes. -Math.PI/2 sets 0 mins to the TOP.
+  const angle = (minutesFloat * Math.PI / 30) - Math.PI / 2;
 
-    function drawMinutePointer(orbitRadius) {
-      const now = new Date();
-      const minutesFloat = now.getMinutes() + (now.getSeconds() / 60);
-      const angle = (minutesFloat * Math.PI / 30) - Math.PI / 2;
+  // 60% size of the original red arrow proportions
+  const pointerLen = (orbitRadius * 0.13) * 0.60; 
+  const pointerWidth = pointerLen / 2.2;
 
-      // Adjusted length to ensure it overlays both rings
-      const pointerLen = (orbitRadius * 0.22) * 0.70; 
-      const pointerWidth = pointerLen / 2.2;
+  canvasContext.save();
+  canvasContext.rotate(angle);
+  canvasContext.translate(orbitRadius, 0); 
 
-      canvasContext.save();
-      canvasContext.rotate(angle);
-      canvasContext.translate(orbitRadius, 0); 
+  // green Gradient
+  const gradient = canvasContext.createLinearGradient(0, 0, pointerLen, 0);
+  gradient.addColorStop(0, '#FF00FF'); // Bright green
+  gradient.addColorStop(1, '#D100D1'); // Golden green
 
-      const gradient = canvasContext.createLinearGradient(0, 0, -pointerLen, 0);
-      gradient.addColorStop(0, '#FF00FF'); 
-      gradient.addColorStop(1, '#D100D1'); 
+  canvasContext.beginPath();
+  canvasContext.moveTo(0, 0);                      
+  canvasContext.lineTo(-pointerLen, -pointerWidth); 
+  canvasContext.lineTo(-pointerLen, pointerWidth);  
+  canvasContext.closePath();
 
-      canvasContext.beginPath();
-      canvasContext.moveTo(0, 0);                      
-      canvasContext.lineTo(-pointerLen, -pointerWidth); 
-      canvasContext.lineTo(-pointerLen, pointerWidth);  
-      canvasContext.closePath();
+  // Subtle shadow for depth
+  canvasContext.shadowBlur = 4;
+  canvasContext.shadowColor = 'rgba(0, 0, 0, 0.3)';
+  
+  canvasContext.fillStyle = gradient;
+  canvasContext.fill();
 
-      canvasContext.shadowBlur = 4;
-      canvasContext.shadowColor = 'rgba(0, 0, 0, 0.3)';
-      canvasContext.fillStyle = gradient;
-      canvasContext.fill();
+  canvasContext.strokeStyle = '#ffffff';
+  canvasContext.lineWidth = 1.5;
+  canvasContext.lineJoin = 'round'; 
+  canvasContext.stroke();
 
-      canvasContext.strokeStyle = '#ffffff';
-      canvasContext.lineWidth = 1.5;
-      canvasContext.stroke();
-      canvasContext.restore();
-    }
+  canvasContext.restore();
+}
 
     function updateDigitalClock() {
       const now = new Date();
@@ -382,6 +434,11 @@
       const m = String(now.getUTCMinutes()).padStart(2, '0');
       const s = String(now.getUTCSeconds()).padStart(2, '0');
       digitalClockElement.textContent = `UTC: ${h}:${m}:${s}`;
+    }
+
+    function formatUtcOffset(offset) {
+      const sign = offset >= 0 ? '+' : '−';
+      return `UTC${sign}${Math.abs(offset)}`;
     }
 
     function updateLocalTime() {
@@ -398,8 +455,7 @@
       const locHStr = String(Math.floor(locH)).padStart(2, '0');
       const locMStr = String(utcM).padStart(2, '0');
       const locSStr = String(utcS).padStart(2, '0');
-      const sign = off >= 0 ? '+' : '−';
-      const offStr = `UTC${sign}${Math.abs(off)}`;
+      const offStr = formatUtcOffset(off);
       localTimeElement.textContent = `${locHStr}:${locMStr}:${locSStr} — ${zone.city} (${offStr})`;
     }
 
@@ -422,12 +478,16 @@
       const touchEndX = e.changedTouches[0].clientX;
       const diff = touchEndX - touchStartX;
       if (Math.abs(diff) > 50) {
-        if (diff > 0) currentZoneIndex = (currentZoneIndex - 1 + timeZones.length) % timeZones.length;
-        else currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
+        if (diff > 0) {
+           currentZoneIndex = (currentZoneIndex - 1 + timeZones.length) % timeZones.length;
+        } else {
+           currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
+        }
         updateLocalTime();
       }
     }, {passive: false});
 
+    onWindowResize();
     setInterval(() => {
       drawClockFace();
       updateDigitalClock();
