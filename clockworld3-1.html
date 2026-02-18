@@ -82,14 +82,7 @@
   <div id="timeZoneSlider"></div>
 
   <script>
-    // --- CONFIGURATION START ---
-    // Adjust these scalars to change radii (1.0 = Edge of canvas)
-    const radiusConfig = {
-      tickRing: 1.00,       // The ring with the tick marks
-      staticNumbers: 0.86,  // The 0-23 numbers surrounding the clock
-      redArrow: 0.88        // The orbit path of the red arrow
-    };
-    // --- CONFIGURATION END ---
+    
 
     const worldMapImage = new Image();
     worldMapImage.src = 'worldmap.jpg'; 
@@ -154,6 +147,14 @@
     function drawClockFace() {
       const size   = parseFloat(clockCanvasElement.style.width);
       const center = size / 2;
+
+      
+const radiusConfig = {
+      tickRing: 0.97,       // The ring with the tick marks
+      staticNumbers: 0.86,  // The 0-23 numbers surrounding the clock
+      redArrow: 0.88        // The orbit path of the red arrow
+    };
+
       
       // Calculate specific radii based on configuration scalars
       const tickRingRadius = center * radiusConfig.tickRing;
@@ -168,7 +169,7 @@
       canvasContext.save();
       canvasContext.translate(center, center);
 
-      const mapRadius = baseRadius * 0.55; 
+      const mapRadius = radiusConfig.tickRing * 0.55; 
       
       canvasContext.save();
       canvasContext.beginPath();
