@@ -401,15 +401,15 @@ function drawMinutePointer(orbitRadius) {
   canvasContext.rotate(angle);
   canvasContext.translate(orbitRadius, 0); 
 
-  // green Gradient
+  // purple Gradient
   const gradient = canvasContext.createLinearGradient(0, 0, pointerLen, 0);
-  gradient.addColorStop(0, '#FF00FF'); // Bright green
-  gradient.addColorStop(1, '#D100D1'); // Golden green
+  gradient.addColorStop(0, '#FF00FF'); // Bright purple
+  gradient.addColorStop(1, '#D100D1'); // darker purple
 
   canvasContext.beginPath();
   canvasContext.moveTo(0, 0);                      
-  canvasContext.lineTo(pointerLen, -pointerWidth); 
-  canvasContext.lineTo(pointerLen, pointerWidth);  
+  canvasContext.lineTo(-pointerLen, -pointerWidth); 
+  canvasContext.lineTo(-pointerLen, pointerWidth);  
   canvasContext.closePath();
 
   // Subtle shadow for depth
