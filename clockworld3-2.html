@@ -31,7 +31,8 @@
     #zoneButtonsContainer button {
       font-size: 1.2em;
       padding: 0.3em 0.8em;
-      margin: 0 0.5em      cursor: pointer;
+      margin: 0 0.5em;
+      cursor: pointer;
       border: 1px solid #999;
       background: #fff;
       border-radius: 4px;
@@ -40,7 +41,7 @@
       width: 90vw;
       max-width: 500px;
       height: 2em;
-      margin: 1em auto;
+      margin: 1em auto 0 auto;
       background: #ddd;
       border-radius: 0.25em;
       touch-action: none;
@@ -58,26 +59,37 @@
       pointer-events: none;
     }
     #timeZoneSlider:active { background: #ccc; }
-
+    
+    /* New Selectors Style */
     #citySelectors {
-      margin-top: 20px;
-      width: 90vw;
-      max-width: 500px;
-    }
-    #citySelectors label {
-      display: block;
-      margin: 12px 0 5px 0;
-      font-weight: 600;
-      color: #222;
-    }
-    #citySelectors select {
-      width: 100%;
-      padding: 11px 12px;
-      font-size: 1.05rem;
-      border: 2px solid #555;
+      margin-top: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.5);
+      padding: 10px 20px;
       border-radius: 8px;
-      background: white;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .select-group {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 250px;
+      font-weight: bold;
+    }
+    .select-group select {
+      padding: 4px;
+      border-radius: 4px;
+      border: 1px solid #999;
+      width: 130px;
+    }
+    .color-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 5px;
     }
   </style>
 </head>
@@ -95,20 +107,72 @@
   <div id="timeZoneSlider"></div>
 
   <div id="citySelectors">
-    <label for="originSelect">Origin City (Green)</label>
-    <select id="originSelect"></select>
-
-    <label for="referenceSelect">Reference Time Zone (Hands)</label>
-    <select id="referenceSelect"></select>
-
-    <label for="destSelect">Destination City (Red)</label>
-    <select id="destSelect"></select>
+    <div class="select-group">
+      <span><span class="color-indicator" style="background:#00FF00;"></span>Origin:</span>
+      <select id="originSelect"></select>
+    </div>
+    <div class="select-group">
+      <span><span class="color-indicator" style="background:#333;"></span>Time Zone:</span>
+      <select id="tzSelect"></select>
+    </div>
+    <div class="select-group">
+      <span><span class="color-indicator" style="background:#FF0000;"></span>Destination:</span>
+      <select id="destSelect"></select>
+    </div>
   </div>
 
   <script>
     /**
-     * MASTER RADIUS CONFIGURATION
+     * TOP 25 GLOBAL CITIES DATA
+     * Includes Latitude, Longitude, and UTC Offset
      */
+    const globalCities = [
+      { name: 'London', lat: 51.5074, lng: -0.1278, offset: 0 },
+      { name: 'New York', lat: 40.7128, lng: -74.0060, offset: -5 },
+      { name: 'Paris', lat: 48.8566, lng: 2.3522, offset: 1 },
+      { name: 'Beijing', lat: 39.9042, lng: 116.4074, offset: 8 },
+      { name: 'Tokyo', lat: 35.6762, lng: 139.6503, offset: 9 },
+      { name: 'Los Angeles', lat: 34.0522, lng: -118.2437, offset: -8 },
+      { name: 'Dubai', lat: 25.2048, lng: 55.2708, offset: 4 },
+      { name: 'Singapore', lat: 1.3521, lng: 103.8198, offset: 8 },
+      { name: 'Hong Kong', lat: 22.3193, lng: 114.1694, offset: 8 },
+      { name: 'Sydney', lat: -33.8688, lng: 151.2093, offset: 10 },
+      { name: 'São Paulo', lat: -23.5505, lng: -46.6333, offset: -3 },
+      { name: 'Mumbai', lat: 19.0760, lng: 72.8777, offset: 5.5 },
+      { name: 'Moscow', lat: 55.7558, lng: 37.6173, offset: 3 },
+      { name: 'Seoul', lat: 37.5665, lng: 126.9780, offset: 9 },
+      { name: 'Toronto', lat: 43.6510, lng: -79.3470, offset: -5 },
+      { name: 'Berlin', lat: 52.5200, lng: 13.4050, offset: 1 },
+      { name: 'Madrid', lat: 40.4168, lng: -3.7038, offset: 1 },
+      { name: 'Rome', lat: 41.9028, lng: 12.4964, offset: 1 },
+      { name: 'Buenos Aires', lat: -34.6037, lng: -58.3816, offset: -3 },
+      { name: 'Mexico City', lat: 19.4326, lng: -99.1332, offset: -6 },
+      { name: 'Cairo', lat: 30.0444, lng: 31.2357, offset: 2 },
+      { name: 'Istanbul', lat: 41.0082, lng: 28.9784, offset: 3 },
+      { name: 'Bangkok', lat: 13.7563, lng: 100.5018, offset: 7 },
+      { name: 'Chicago', lat: 41.8781, lng: -87.6298, offset: -6 },
+      { name: 'Jakarta', lat: -6.2088, lng: 106.8456, offset: 7 }
+    ];
+
+    // Populate dropdowns
+    const originSelect = document.getElementById('originSelect');
+    const tzSelect = document.getElementById('tzSelect');
+    const destSelect = document.getElementById('destSelect');
+
+    globalCities.forEach((city, index) => {
+      const option1 = new Option(city.name, index);
+      const option2 = new Option(city.name, index);
+      const option3 = new Option(city.name, index);
+      originSelect.add(option1);
+      tzSelect.add(option2);
+      destSelect.add(option3);
+    });
+
+    // Default selections
+    originSelect.selectedIndex = 0; // London
+    tzSelect.selectedIndex = 4;     // Tokyo
+    destSelect.selectedIndex = 1;   // New York
+
     const RADIUS_COEFFICIENTS = {
       outerTickRing: 0.97,
       staticNumbers: 0.86,
@@ -120,9 +184,6 @@
       cityLabelStagger: 0.072
     };
 
-    /**
-     * POINTER STYLE CONFIGURATION
-     */
     const POINTER_CONFIG = {
       hourHand: {
         length: 32,
@@ -152,11 +213,6 @@
     const decreaseZoneButton = document.getElementById('decreaseZoneButton');
     const timeZoneSliderElement = document.getElementById('timeZoneSlider');
 
-    // New dropdown elements
-    const originSelect = document.getElementById('originSelect');
-    const referenceSelect = document.getElementById('referenceSelect');
-    const destSelect = document.getElementById('destSelect');
-
     const timeZones = [
       { city: 'Pago Pago',  offset: -11 }, { city: 'Honolulu',   offset: -10 },
       { city: 'Anchorage',  offset:  -9 }, { city: 'Los Angls',  offset:  -8 },
@@ -172,82 +228,7 @@
       { city: 'Noumea',     offset: +11 }, { city: 'Auckland',   offset: +12 }
     ];
 
-    // Top 25 global cities with accurate UTC offsets and lat/lon for worldmap.jpg positioning
-    const majorCities = [
-      { name: "New York", offset: -5, lat: 40.71, lon: -74.01 },
-      { name: "Los Angeles", offset: -8, lat: 34.05, lon: -118.24 },
-      { name: "Chicago", offset: -6, lat: 41.88, lon: -87.63 },
-      { name: "Mexico City", offset: -6, lat: 19.43, lon: -99.13 },
-      { name: "São Paulo", offset: -3, lat: -23.55, lon: -46.63 },
-      { name: "Buenos Aires", offset: -3, lat: -34.60, lon: -58.38 },
-      { name: "London", offset: 0, lat: 51.51, lon: -0.13 },
-      { name: "Paris", offset: 1, lat: 48.86, lon: 2.35 },
-      { name: "Berlin", offset: 1, lat: 52.52, lon: 13.41 },
-      { name: "Madrid", offset: 1, lat: 40.42, lon: -3.70 },
-      { name: "Rome", offset: 1, lat: 41.90, lon: 12.50 },
-      { name: "Cairo", offset: 2, lat: 30.04, lon: 31.24 },
-      { name: "Johannesburg", offset: 2, lat: -26.20, lon: 28.05 },
-      { name: "Moscow", offset: 3, lat: 55.76, lon: 37.62 },
-      { name: "Istanbul", offset: 3, lat: 41.01, lon: 28.96 },
-      { name: "Dubai", offset: 4, lat: 25.20, lon: 55.27 },
-      { name: "Mumbai", offset: 5.5, lat: 19.08, lon: 72.88 },
-      { name: "Bangkok", offset: 7, lat: 13.76, lon: 100.50 },
-      { name: "Singapore", offset: 8, lat: 1.35, lon: 103.82 },
-      { name: "Hong Kong", offset: 8, lat: 22.40, lon: 114.11 },
-      { name: "Beijing", offset: 8, lat: 39.90, lon: 116.41 },
-      { name: "Tokyo", offset: 9, lat: 35.68, lon: 139.77 },
-      { name: "Seoul", offset: 9, lat: 37.57, lon: 126.98 },
-      { name: "Sydney", offset: 10, lat: -33.87, lon: 151.21 },
-      { name: "Auckland", offset: 12, lat: -36.85, lon: 174.76 }
-    ];
-
-    const browserUtcOffset = -new Date().getTimezoneOffset() / 60;
-    let currentZoneIndex = timeZones.findIndex(zone => zone.offset === browserUtcOffset);
-    if (currentZoneIndex < 0) currentZoneIndex = 11; 
-
-    // Selected cities and reference offset for hands
-    let originCity = null;
-    let destCity = null;
-    let referenceOffset = 0;
-
-    function getLocalHour(utcH, offset) {
-      let h = (utcH + offset) % 24;
-      if (h < 0) h += 24;
-      return Math.floor(h);
-    }
-
-    function getMapPosition(lat, lon, mapRadius) {
-      const x = ((lon + 180) / 360) * (mapRadius * 2) - mapRadius;
-      const y = ((90 - lat) / 180) * (mapRadius * 2) - mapRadius;
-      return {x, y};
-    }
-
-    function populateCityDropdowns() {
-      const selects = [originSelect, referenceSelect, destSelect];
-      selects.forEach(select => {
-        select.innerHTML = '';
-        majorCities.forEach(city => {
-          const opt = document.createElement('option');
-          opt.value = city.name;
-          opt.textContent = `${city.name} (${formatUtcOffset(city.offset)})`;
-          select.appendChild(opt);
-        });
-      });
-
-      // Sensible defaults matching the request examples
-      originSelect.value = "London";
-      referenceSelect.value = "New York";
-      destSelect.value = "Tokyo";
-
-      originCity = majorCities.find(c => c.name === "London");
-      destCity = majorCities.find(c => c.name === "Tokyo");
-      referenceOffset = majorCities.find(c => c.name === "New York").offset;
-    }
-
-    function formatUtcOffset(offset) {
-      const sign = offset >= 0 ? '+' : '−';
-      return `UTC${sign}${Math.abs(offset)}`;
-    }
+    let currentZoneIndex = 11; 
 
     function onWindowResize() {
       const canvasSize = Math.min(window.innerWidth, window.innerHeight) * 0.85;
@@ -262,22 +243,13 @@
       drawClockFace();
     }
 
-    function calculateHourAngle() {
-      const now = new Date();
-      const utcHours = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
-      let zoneHours = (utcHours + referenceOffset) % 24;
-      if (zoneHours < 0) zoneHours += 24;
-      return ((zoneHours - 12) * Math.PI / 12) - Math.PI / 2;
-    }
-
-    function calculateMinuteAngle() {
-      const now = new Date();
-      const minutesFloat = now.getUTCMinutes() + (now.getUTCSeconds() / 60);
-      return (minutesFloat * Math.PI / 30) - Math.PI / 2;
-    }
-
     window.addEventListener('resize', onWindowResize);
     window.addEventListener('orientationchange', onWindowResize);
+
+    // Force redraw on select change
+    [originSelect, tzSelect, destSelect].forEach(el => {
+      el.addEventListener('change', drawClockFace);
+    });
 
     function drawClockFace() {
       const canvasWidth = parseFloat(clockCanvasElement.style.width);
@@ -300,38 +272,15 @@
         canvasContext.fillStyle = '#a0d0ff';
         canvasContext.fill();
       }
+
+      // Plot Origin (Green) and Destination (Red) Cities
+      const originCity = globalCities[originSelect.value];
+      const destCity = globalCities[destSelect.value];
+
+      drawCityDot(originCity, mapRadius, '#00FF00');
+      drawCityDot(destCity, mapRadius, '#FF0000');
+
       canvasContext.restore();
-
-      // Draw green origin dot and red destination dot on the world map
-      if (originCity) {
-        const pos = getMapPosition(originCity.lat, originCity.lon, mapRadius);
-        canvasContext.save();
-        canvasContext.fillStyle = '#22ff44';
-        canvasContext.strokeStyle = '#ffffff';
-        canvasContext.lineWidth = 2.5;
-        canvasContext.shadowBlur = 6;
-        canvasContext.shadowColor = 'rgba(34, 255, 68, 0.7)';
-        canvasContext.beginPath();
-        canvasContext.arc(pos.x, pos.y, 9, 0, Math.PI * 2);
-        canvasContext.fill();
-        canvasContext.stroke();
-        canvasContext.restore();
-      }
-
-      if (destCity) {
-        const pos = getMapPosition(destCity.lat, destCity.lon, mapRadius);
-        canvasContext.save();
-        canvasContext.fillStyle = '#ff4444';
-        canvasContext.strokeStyle = '#ffffff';
-        canvasContext.lineWidth = 2.5;
-        canvasContext.shadowBlur = 6;
-        canvasContext.shadowColor = 'rgba(255, 68, 68, 0.7)';
-        canvasContext.beginPath();
-        canvasContext.arc(pos.x, pos.y, 9, 0, Math.PI * 2);
-        canvasContext.fill();
-        canvasContext.stroke();
-        canvasContext.restore();
-      }
 
       // 2. Borders and Ticks
       drawClockBorder(mapRadius);
@@ -343,22 +292,44 @@
       // 4. Moving City and Hour Rings
       drawHourNumbersAndCities(universalRadius);
       
-      // 5. Trapezoidal Pointers (red hour hand now follows selected reference timezone)
+      // 5. Trapezoidal Pointers (Based on Middle Dropdown Timezone)
       drawTrapezoidPointer(
         RADIUS_COEFFICIENTS.magentaArrowOrbit * universalRadius, 
         calculateMinuteAngle(), 
         POINTER_CONFIG.minuteHand,
-        4
+        4 
       );
       
       drawTrapezoidPointer(
         RADIUS_COEFFICIENTS.redArrowOrbit * universalRadius, 
         calculateHourAngle(), 
         POINTER_CONFIG.hourHand,
-        6
+        6 
       );
       
       canvasContext.restore();
+    }
+
+    // Helper to plot cities
+    function drawCityDot(city, mapRadius, color) {
+      const x = (city.lng / 180) * mapRadius;
+      const y = -(city.lat / 90) * mapRadius; // Assumes Equirectangular projection
+      
+      canvasContext.beginPath();
+      canvasContext.arc(x, y, mapRadius * 0.05, 0, Math.PI * 2);
+      canvasContext.fillStyle = color;
+      canvasContext.fill();
+      canvasContext.strokeStyle = '#FFFFFF';
+      canvasContext.lineWidth = 1;
+      canvasContext.stroke();
+    }
+
+    // Helper to get local hour for bounding boxes
+    function getCityLocalHour(offset) {
+      const now = new Date();
+      let h = Math.floor(now.getUTCHours() + offset) % 24;
+      if (h < 0) h += 24;
+      return h;
     }
 
     function drawTrapezoidPointer(orbitRadius, angle, config, shadow) {
@@ -388,6 +359,25 @@
       canvasContext.stroke();
       
       canvasContext.restore();
+    }
+
+    // Hands now governed by Middle Dropdown (tzSelect)
+    function calculateHourAngle() {
+      const offset = globalCities[tzSelect.value].offset;
+      const now = new Date();
+      const utcFloat = now.getUTCHours() + (now.getUTCMinutes() / 60) + (now.getUTCSeconds() / 3600);
+      let localFloat = (utcFloat + offset) % 24;
+      if (localFloat < 0) localFloat += 24;
+      return ((localFloat - 12) * Math.PI / 12) - Math.PI / 2;
+    }
+
+    function calculateMinuteAngle() {
+      const offset = globalCities[tzSelect.value].offset;
+      const now = new Date();
+      const fractionalHours = offset % 1;
+      let minutesFloat = now.getUTCMinutes() + (now.getUTCSeconds() / 60) + (fractionalHours * 60);
+      minutesFloat = (minutesFloat % 60 + 60) % 60; 
+      return (minutesFloat * Math.PI / 30) - Math.PI / 2;
     }
 
     function drawClockBorder(innerRadius) {
@@ -460,8 +450,9 @@
       const now = new Date();
       const currentUtcHour = now.getUTCHours(); 
 
-      const originHour = originCity ? getLocalHour(currentUtcHour, originCity.offset) : -1;
-      const destHour = destCity ? getLocalHour(currentUtcHour, destCity.offset) : -1;
+      // Get target hours for green and red boxes
+      const originHour = getCityLocalHour(globalCities[originSelect.value].offset);
+      const destHour = getCityLocalHour(globalCities[destSelect.value].offset);
 
       canvasContext.save();
       canvasContext.lineWidth = backgroundThickness;
@@ -478,42 +469,32 @@
       canvasContext.font = `bold ${numberFontSize}px sans-serif`;
       canvasContext.textAlign = 'center';
       canvasContext.textBaseline = 'middle';
-
       for (let hour = 0; hour < 24; hour++) {
         const angle = ((currentUtcHour - hour) * Math.PI / 12) - Math.PI / 2;
         const isDarkSegment = (hour >= 19 || hour <= 6);
+        
         canvasContext.save();
         canvasContext.translate(numberRingRadius * Math.cos(angle), numberRingRadius * Math.sin(angle));
         canvasContext.rotate(angle - Math.PI / 2); 
 
-        // Green/red glowing circle around the hour number on the ring
-        const highlightR = numberFontSize * 1.3;
+        // Draw Origin Box (Green)
         if (hour === originHour) {
-          canvasContext.strokeStyle = '#22ff44';
-          canvasContext.lineWidth = 4.5;
-          canvasContext.shadowBlur = 10;
-          canvasContext.shadowColor = '#22ff44';
-          canvasContext.beginPath();
-          canvasContext.arc(0, 0, highlightR, 0, Math.PI * 2);
-          canvasContext.stroke();
+          canvasContext.strokeStyle = '#00FF00';
+          canvasContext.lineWidth = 2.5;
+          canvasContext.strokeRect(-numberFontSize*0.75, -numberFontSize*0.75, numberFontSize*1.5, numberFontSize*1.5);
         }
+        // Draw Dest Box (Red) - drawn slightly larger to prevent absolute overlap if they are the same
         if (hour === destHour) {
-          canvasContext.strokeStyle = '#ff3366';
-          canvasContext.lineWidth = 4.5;
-          canvasContext.shadowBlur = 10;
-          canvasContext.shadowColor = '#ff3366';
-          canvasContext.beginPath();
-          canvasContext.arc(0, 0, highlightR, 0, Math.PI * 2);
-          canvasContext.stroke();
+          canvasContext.strokeStyle = '#FF0000';
+          canvasContext.lineWidth = 2.5;
+          canvasContext.strokeRect(-numberFontSize*0.85, -numberFontSize*0.85, numberFontSize*1.7, numberFontSize*1.7);
         }
 
-        canvasContext.shadowBlur = 0;
         canvasContext.fillStyle = isDarkSegment ? '#ffffff' : '#222222';
         canvasContext.fillText(hour, 0, 0);
         canvasContext.restore();
       }
 
-      // Original city labels (unchanged)
       canvasContext.font = `600 ${cityFontSize}px sans-serif`;
       timeZones.forEach((zone, index) => {
         const angle = - (Math.PI / 2) - (zone.offset * (Math.PI / 12));
@@ -541,6 +522,12 @@
       digitalClockElement.textContent = `UTC: ${hours}:${minutes}:${seconds}`;
     }
 
+    function formatUtcOffset(offset) {
+      const sign = offset >= 0 ? '+' : '−';
+      return `UTC${sign}${Math.abs(offset)}`;
+    }
+
+    // Retained legacy UI updating logic
     function updateLocalTimeDisplay() {
       const now = new Date();
       const utcH = now.getUTCHours();
@@ -559,7 +546,6 @@
       localTimeDisplayElement.textContent = `${hourString}:${minuteString}:${secondString} — ${zone.city} (${offsetString})`;
     }
 
-    // Original zone buttons & slider (unchanged)
     increaseZoneButton.addEventListener('click', () => {
       currentZoneIndex = (currentZoneIndex + 1) % timeZones.length;
       updateLocalTimeDisplay();
@@ -575,7 +561,7 @@
       touchStartX = event.touches[0].clientX;
     }, {passive: false});
 
-    timeZoneElement.addEventListener('touchend', event => {
+    timeZoneSliderElement.addEventListener('touchend', event => {
       const touchEndX = event.changedTouches[0].clientX;
       const difference = touchEndX - touchStartX;
       if (Math.abs(difference) > 50) {
@@ -588,27 +574,6 @@
       }
     }, {passive: false});
 
-    // New dropdown listeners
-    originSelect.addEventListener('change', () => {
-      originCity = majorCities.find(c => c.name === originSelect.value);
-      drawClockFace();
-    });
-
-    referenceSelect.addEventListener('change', () => {
-      const city = majorCities.find(c => c.name === referenceSelect.value);
-      if (city) {
-        referenceOffset = city.offset;
-        drawClockFace();
-      }
-    });
-
-    destSelect.addEventListener('change', () => {
-      destCity = majorCities.find(c => c.name === destSelect.value);
-      drawClockFace();
-    });
-
-    // Initialize everything
-    populateCityDropdowns();
     onWindowResize();
     setInterval(() => {
       drawClockFace();
@@ -618,3 +583,4 @@
   </script>
 </body>
 </html>
+
