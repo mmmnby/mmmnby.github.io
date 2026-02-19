@@ -307,8 +307,11 @@
         6 
       );
       
-      
-     // Helper to plot cities on an Azimuthal Equidistant Projection (North Pole Centered)
+      canvasContext.restore();
+    }
+
+    // Helper to plot cities
+        // Helper to plot cities on an Azimuthal Equidistant Projection (North Pole Centered)
     function drawCityDot(city, mapRadius, color) {
       // 1. Calculate the polar angle (Longitude)
       // Canvas 0 radians is Right (+x). Canvas +PI/2 is Down (+y).
@@ -595,4 +598,5 @@
   </script>
 </body>
 </html>
+
 
