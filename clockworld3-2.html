@@ -311,11 +311,21 @@
     }
 
     // Helper to plot cities
+      
+
+        // Helper to plot cities
     function drawCityDot(city, mapRadius, color) {
-      const x = ((city.lng + 90 )/ 180) * mapRadius;
-      const y = -(city.lat / 90) * mapRadius; // Assumes Equirectangular projection
+      // 1. Calculate the initial flat Equirectangular coordinates
+      const origX = (city.lng / 180) * mapRadius;
+      const origY = -(city.lat / 90) * mapRadius; 
+      
+      // 2. Apply a 90-degree counter-clockwise rotation matrix
+      // In a canvas where +y is down, (x, y) becomes (y, -x)
+      const x = origY;
+      const y = -origX;
       
       canvasContext.beginPath();
+      // Plot the dot using the newly rotated coordinates
       canvasContext.arc(x, y, mapRadius * 0.05, 0, Math.PI * 2);
       canvasContext.fillStyle = color;
       canvasContext.fill();
@@ -323,6 +333,8 @@
       canvasContext.lineWidth = 1;
       canvasContext.stroke();
     }
+
+
 
     // Helper to get local hour for bounding boxes
     function getCityLocalHour(offset) {
@@ -583,4 +595,5 @@
   </script>
 </body>
 </html>
+
 
