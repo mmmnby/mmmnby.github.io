@@ -194,6 +194,13 @@
       drawHourNumbersAndCities(universalRadius);
       
       // 5. Trapezoidal Pointers
+    drawTrapezoidPointer(
+        RADIUS_COEFFICIENTS.magentaArrowOrbit * universalRadius, 
+        calculateMinuteAngle(), 
+        POINTER_CONFIG.minuteHand,
+        4 // Shadow blur
+      );
+      
       drawTrapezoidPointer(
         RADIUS_COEFFICIENTS.redArrowOrbit * universalRadius, 
         calculateHourAngle(), 
@@ -201,12 +208,7 @@
         6 // Shadow blur
       );
       
-      drawTrapezoidPointer(
-        RADIUS_COEFFICIENTS.magentaArrowOrbit * universalRadius, 
-        calculateMinuteAngle(), 
-        POINTER_CONFIG.minuteHand,
-        4 // Shadow blur
-      );
+      
       
       canvasContext.restore();
     }
