@@ -311,33 +311,18 @@
     }
 
     // Helper to plot cities
-        // Helper to plot cities on an Azimuthal Equidistant Projection (North Pole Centered)
     function drawCityDot(city, mapRadius, color) {
-      // 1. Calculate the polar angle (Longitude)
-      // Canvas 0 radians is Right (+x). Canvas +PI/2 is Down (+y).
-      const angle = -city.lng * (Math.PI / 180);
-
-      // 2. Calculate the distance from center (Latitude)
-      // Center is 90°N (r=0), Edge is 90°S (r=mapRadius).
-      const normalizedRadius = (90 - city.lat) / 180;
-      const r = mapRadius * normalizedRadius;
-
-      // 3. Convert polar coordinates to Cartesian canvas coordinates
-      const x = r * Math.cos(angle);
-      const y = r * Math.sin(angle);
+      const x = ((city.lng + 90 )/ 180) * mapRadius;
+      const y = -(city.lat / 90) * mapRadius; // Assumes Equirectangular projection
       
       canvasContext.beginPath();
-      // Radius of the dot set to 4% of map radius for clean visibility
-      canvasContext.arc(x, y, mapRadius * 0.04, 0, Math.PI * 2); 
+      canvasContext.arc(x, y, mapRadius * 0.05, 0, Math.PI * 2);
       canvasContext.fillStyle = color;
       canvasContext.fill();
-      
-      // A white stroke ensures the dots pop against both land and water
       canvasContext.strokeStyle = '#FFFFFF';
-      canvasContext.lineWidth = 1.5;
+      canvasContext.lineWidth = 1;
       canvasContext.stroke();
     }
-
 
     // Helper to get local hour for bounding boxes
     function getCityLocalHour(offset) {
@@ -598,5 +583,4 @@
   </script>
 </body>
 </html>
-
 
