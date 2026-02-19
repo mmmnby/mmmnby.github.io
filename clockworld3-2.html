@@ -315,7 +315,7 @@
     function drawCityDot(city, mapRadius, color) {
       // 1. Calculate the polar angle (Longitude)
       // Canvas 0 radians is Right (+x). Canvas +PI/2 is Down (+y).
-      const angle = -city.lng * (Math.PI / 180);
+      const angle = -city.lng * (Math.PI / 180) - (Math.PI / 2);
 
       // 2. Calculate the distance from center (Latitude)
       // Center is 90°N (r=0), Edge is 90°S (r=mapRadius).
