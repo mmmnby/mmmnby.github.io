@@ -140,8 +140,8 @@
       { city: 'Noumea',     offset: +11 }, { city: 'Auckland',   offset: +12 }
     ];
 
-    const browserUtcOffset = -new Date().getTimezoneOffset() / 60;
-    let currentZoneIndex = timeZones.findIndex(zone => zone.offset === browserUtcOffset);
+    const selectUtcOffset = -8;
+    let currentZoneIndex = timeZones.findIndex(zone => zone.offset === selectUtcOffset);
     if (currentZoneIndex < 0) currentZoneIndex = 11; 
 
     function onWindowResize() {
