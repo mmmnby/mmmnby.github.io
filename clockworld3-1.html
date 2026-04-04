@@ -254,9 +254,23 @@
 
     function calculateHourAngle() {
       const now = new Date();
-      const localHoursFloat = now.getHours() + (now.getMinutes() / 60) + (now.getSeconds() / 3600);
+      const utcH = now.getUTCHours();
+      const utcM = now.getUTCMinutes();
+      const utcS = now.getUTCSeconds();
+      
+      // Pull the offset from the currently selected timezone
+      const offset = timeZones[currentZoneIndex].offset;
+      
+      // Calculate the floating hour for the selected zone
+      let localHoursFloat = utcH + offset + (utcM / 60) + (utcS / 3600);
+      
+      // Normalize to 0-24 (using the same logic from your local time display)
+      localHoursFloat = localHoursFloat % 24;
+      if (localHoursFloat < 0) localHoursFloat += 24;
+
       return ((localHoursFloat - 12) * Math.PI / 12) - Math.PI / 2;
     }
+
 
     function calculateMinuteAngle() {
       const now = new Date();
