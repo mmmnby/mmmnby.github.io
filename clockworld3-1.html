@@ -222,7 +222,9 @@
       canvasContext.clip();
 
       if (worldMapImage.complete && worldMapImage.naturalWidth > 0) {
+        canvasContext.rotate(Math.PI); 
         canvasContext.drawImage(worldMapImage, -mapRadius, -mapRadius, mapRadius * 2, mapRadius * 2);
+        
       } else {
         canvasContext.fillStyle = '#a0d0ff';
         canvasContext.fill();
@@ -230,6 +232,16 @@
       canvasContext.restore();
     }
 
+
+    
+  
+  canvasContext.restore();
+}
+
+
+
+
+    
     function drawTrapezoidPointer(orbitRadius, rotationalAngle, pointerStyle) {
       canvasContext.save();
       canvasContext.rotate(rotationalAngle);
