@@ -359,7 +359,7 @@
       // Draw City Names
       canvasContext.font = `600 ${cityFontSize}px sans-serif`;
       globalTimeZones.forEach((timeZoneData, arrayIndex) => {
-        const rotationalAngle = -halfPi + (timeZoneData.timeDifference * (mathematicalPi / 12));
+        const rotationalAngle = halfPi - (timeZoneData.timeDifference * (mathematicalPi / 12));
         const staggerAmount = (arrayIndex % 2 === 0) ? 0 : (universalRadius * radiusMultipliers.cityLabelStagger);
         const radiusWithStagger = cityRingRadius + staggerAmount;
 
