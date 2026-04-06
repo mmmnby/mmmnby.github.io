@@ -140,14 +140,12 @@
     const timeZoneSliderElement = document.getElementById('timeZoneSliderElement');
 
     const worldMapImage = new Image();
-    worldMapImage.source = 'worldmap.jpg'; 
+    worldMapImage.src = 'worldmap.jpg'; // Fixed: Native property must remain 'src'
     worldMapImage.onload = handleWindowResize;
 
     const defaultStartingTimeDifference = -8;
     let currentZoneIndex = globalTimeZones.findIndex(zone => zone.timeDifference === defaultStartingTimeDifference);
-    if (currentZoneIndex < 0) {
-      currentZoneIndex = 11; // Default to London if not found
-    }
+    if (currentZoneIndex < 0) currentZoneIndex = 11; 
 
     let touchStartingXCoordinate = 0;
 
@@ -164,9 +162,7 @@
       let localHoursDecimal = universalTimeHour + currentTimeDifference + (universalTimeMinute / 60) + (universalTimeSecond / 3600);
       
       localHoursDecimal = localHoursDecimal % 24;
-      if (localHoursDecimal < 0) {
-        localHoursDecimal += 24;
-      }
+      if (localHoursDecimal < 0) localHoursDecimal += 24;
 
       return ((localHoursDecimal - 12) * mathematicalPi / 12) - halfPi;
     }
@@ -225,8 +221,12 @@
       canvasContext.arc(0, 0, mapRadius, 0, doublePi);
       canvasContext.clip();
 
-      
-      canvasContext.drawImage(worldMapImage, -mapRadius, -mapRadius, mapRadius * 2, mapRadius * 2);
+      if (worldMapImage.complete && worldMapImage.naturalWidth > 0) {
+        canvasContext.drawImage(worldMapImage, -mapRadius, -mapRadius, mapRadius * 2, mapRadius * 2);
+      } else {
+        canvasContext.fillStyle = '#a0d0ff';
+        canvasContext.fill();
+      }
       canvasContext.restore();
     }
 
@@ -307,11 +307,10 @@
 
         canvasContext.save();
         canvasContext.translate(horizontalPosition, verticalPosition);
-        if (hourValue >= 6 && hourValue <= 18) {
-          canvasContext.rotate(rotationalAngle + halfPi);
-        } else {
-          canvasContext.rotate(rotationalAngle - halfPi);
-        }
+        
+        if (hourValue >= 6 && hourValue <= 18) canvasContext.rotate(rotationalAngle + halfPi);
+        else canvasContext.rotate(rotationalAngle - halfPi);
+        
         canvasContext.fillText(hourValue, 0, 0);
         canvasContext.restore();
       }
@@ -367,11 +366,8 @@
         canvasContext.save();
         canvasContext.translate(radiusWithStagger * Math.cos(rotationalAngle), radiusWithStagger * Math.sin(rotationalAngle));
         
-        if (Math.sin(rotationalAngle) < 0) {
-          canvasContext.rotate(rotationalAngle + halfPi);
-        } else {
-          canvasContext.rotate(rotationalAngle - halfPi);
-        }
+        if (Math.sin(rotationalAngle) < 0) canvasContext.rotate(rotationalAngle + halfPi);
+        else canvasContext.rotate(rotationalAngle - halfPi);
         
         canvasContext.fillStyle = '#222222';
         canvasContext.fillText(timeZoneData.cityName, 0, 0);
@@ -395,9 +391,7 @@
       const timeDifference = activeZoneData.timeDifference;
 
       let localTimeHour = (currentDate.getUTCHours() + timeDifference) % 24;
-      if (localTimeHour < 0) {
-        localTimeHour += 24;
-      }
+      if (localTimeHour < 0) localTimeHour += 24;
       
       const formattedLocalHour = formatNumberWithLeadingZero(Math.floor(localTimeHour));
       const timeDifferenceString = formatTimeDifferenceText(timeDifference);
@@ -421,14 +415,15 @@
       renderClockFace();
     }
 
-    function shiftTimeZone(directionAmount) {
-      const totalZones = globalTimeZones.length;
-      currentZoneIndex = (currentZoneIndex + directionAmount + totalZones) % totalZones;
+    increaseZoneButton.addEventListener('click', () => {
+      currentZoneIndex = (currentZoneIndex + 1) % globalTimeZones.length;
       updateDigitalTextClocks();
-    }
+    });
 
-    increaseZoneButton.addEventListener('click', () => shiftTimeZone(1));
-    decreaseZoneButton.addEventListener('click', () => shiftTimeZone(-1));
+    decreaseZoneButton.addEventListener('click', () => {
+      currentZoneIndex = (currentZoneIndex - 1 + globalTimeZones.length) % globalTimeZones.length;
+      updateDigitalTextClocks();
+    });
 
     timeZoneSliderElement.addEventListener('touchstart', touchEvent => {
       touchStartingXCoordinate = touchEvent.touches[0].clientX;
@@ -439,7 +434,9 @@
       const horizontalDifference = touchEndingXCoordinate - touchStartingXCoordinate;
       
       if (Math.abs(horizontalDifference) > 50) {
-        shiftTimeZone(horizontalDifference > 0 ? -1 : 1);
+        if (horizontalDifference > 0) currentZoneIndex = (currentZoneIndex - 1 + globalTimeZones.length) % globalTimeZones.length;
+        else currentZoneIndex = (currentZoneIndex + 1) % globalTimeZones.length;
+        updateDigitalTextClocks();
       }
     }, {passive: false});
 
@@ -456,4 +453,3 @@
   </script>
 </body>
 </html>
-
