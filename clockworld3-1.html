@@ -332,7 +332,7 @@
       canvasContext.save();
       canvasContext.lineWidth = backgroundThickness;
       for (let hourValue = 0; hourValue < 24; hourValue++) {
-        const rotationalAngle = ((currentUniversalHour - hourValue) * mathematicalPi / 12) - halfPi;
+        const rotationalAngle = ((currentUniversalHour - hourValue) * mathematicalPi / 12) + halfPi;
         const isDarkTimeSegment = (hourValue >= 19 || hourValue <= 6); 
         canvasContext.beginPath();
         canvasContext.arc(0, 0, numberRingRadius, rotationalAngle - mathematicalPi / 24, rotationalAngle + mathematicalPi / 24);
