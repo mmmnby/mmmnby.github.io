@@ -175,7 +175,7 @@
 
     function formatTimeDifferenceText(timeDifference) {
       const signCharacter = timeDifference >= 0 ? '+' : '−';
-      return `Universal Time${signCharacter}${Math.abs(timeDifference)}`;
+      return `UTC${signCharacter}${Math.abs(timeDifference)}`;
     }
 
     function formatNumberWithLeadingZero(numberValue) {
