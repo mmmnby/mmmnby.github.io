@@ -346,7 +346,7 @@
       canvasContext.textAlign = 'center';
       canvasContext.textBaseline = 'middle';
       for (let hourValue = 0; hourValue < 24; hourValue++) {
-        const rotationalAngle = ((currentUniversalHour - hourValue) * mathematicalPi / 12) - halfPi;
+        const rotationalAngle = ((currentUniversalHour - hourValue) * mathematicalPi / 12) + halfPi;
         const isDarkTimeSegment = (hourValue >= 19 || hourValue <= 6);
         canvasContext.save();
         canvasContext.translate(numberRingRadius * Math.cos(rotationalAngle), numberRingRadius * Math.sin(rotationalAngle));
