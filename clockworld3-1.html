@@ -220,7 +220,8 @@
       canvasContext.beginPath();
       canvasContext.arc(0, 0, mapRadius, 0, doublePi);
       canvasContext.clip();
-
+      canvasContext.rotate(mathematicalPi);
+      
       if (worldMapImage.complete && worldMapImage.naturalWidth > 0) {
         canvasContext.drawImage(worldMapImage, -mapRadius, -mapRadius, mapRadius * 2, mapRadius * 2);
       } else {
