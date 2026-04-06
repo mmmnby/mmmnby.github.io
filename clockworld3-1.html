@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -94,22 +93,23 @@
       cityLabelStagger: 0.072
     };
 
+    // Values increased by 10%
     const pointerConfiguration = {
       hourHand: {
-        length: 29,
-        baseWidth: 10,
-        tipWidth: 10,
+        length: 31.9, 
+        baseWidth: 11,
+        tipWidth: 11,
         primaryColor: '#ff4d4d',
         secondaryColor: '#991900',
-        shadowBlurAmount: 6
+        shadowBlurAmount: 6.6
       },
       minuteHand: {
-        length: 49,
-        baseWidth: 12,
-        tipWidth: 4,
+        length: 53.9,
+        baseWidth: 13.2,
+        tipWidth: 4.4,
         primaryColor: '#FF00FF',
         secondaryColor: '#D100D1',
-        shadowBlurAmount: 4
+        shadowBlurAmount: 4.4
       }
     };
 
@@ -140,7 +140,7 @@
     const timeZoneSliderElement = document.getElementById('timeZoneSliderElement');
 
     const worldMapImage = new Image();
-    worldMapImage.src = 'worldmap.jpg'; // Fixed: Native property must remain 'src'
+    worldMapImage.src = 'worldmap.jpg'; 
     worldMapImage.onload = handleWindowResize;
 
     const defaultStartingTimeDifference = -8;
@@ -254,7 +254,7 @@
 
       canvasContext.shadowBlur = 0; 
       canvasContext.strokeStyle = '#ffffff';
-      canvasContext.lineWidth = 1.5;
+      canvasContext.lineWidth = 1.65; // Proportional 10% increase
       canvasContext.stroke();
       
       canvasContext.restore();
@@ -263,7 +263,7 @@
     function drawClockBorder(innerRadius) {
       canvasContext.beginPath();
       canvasContext.arc(0, 0, innerRadius, 0, doublePi);
-      canvasContext.lineWidth = 2;
+      canvasContext.lineWidth = 2.2; // Proportional 10% increase
       canvasContext.strokeStyle = '#333333';
       canvasContext.stroke();
     }
@@ -271,7 +271,7 @@
     function drawOuterTickRing(specificRadius) {
       canvasContext.beginPath();
       canvasContext.arc(0, 0, specificRadius, 0, doublePi);
-      canvasContext.lineWidth = 3.5;
+      canvasContext.lineWidth = 3.85; // Proportional 10% increase
       canvasContext.strokeStyle = '#666666';
       canvasContext.stroke();
 
@@ -288,7 +288,7 @@
           (specificRadius - currentTickLength) * Math.cos(rotationalAngle), 
           (specificRadius - currentTickLength) * Math.sin(rotationalAngle)
         );
-        canvasContext.lineWidth = isMajorTick ? 2.5 : 1.2;
+        canvasContext.lineWidth = isMajorTick ? 2.75 : 1.32; // Proportional 10% increase
         canvasContext.strokeStyle = isMajorTick ? '#333333' : '#888888';
         canvasContext.stroke();
       }
@@ -404,7 +404,8 @@
        6. EVENT LISTENERS & INITIALIZATION
        ========================================================================== */
     function handleWindowResize() {
-      const minimumScreenDimension = Math.min(window.innerWidth, window.innerHeight) * 0.85;
+      // Increased from 0.85 to 0.935 (10% increase)
+      const minimumScreenDimension = Math.min(window.innerWidth, window.innerHeight) * 0.935;
       const devicePixelScalingRatio = window.devicePixelRatio || 1;
       
       clockCanvasElement.style.width = minimumScreenDimension + "px";
