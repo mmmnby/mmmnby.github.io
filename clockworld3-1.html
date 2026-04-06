@@ -225,12 +225,8 @@
       canvasContext.arc(0, 0, mapRadius, 0, doublePi);
       canvasContext.clip();
 
-      if (worldMapImage.complete && worldMapImage.naturalWidth > 0) {
-        canvasContext.drawImage(worldMapImage, -mapRadius, -mapRadius, mapRadius * 2, mapRadius * 2);
-      } else {
-        canvasContext.fillStyle = '#a0d0ff';
-        canvasContext.fill();
-      }
+      
+      canvasContext.drawImage(worldMapImage, -mapRadius, -mapRadius, mapRadius * 2, mapRadius * 2);
       canvasContext.restore();
     }
 
