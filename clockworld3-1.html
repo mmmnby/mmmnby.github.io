@@ -448,9 +448,7 @@
     // Start Clock
     handleWindowResize();
     setInterval(() => {
-       if (seconds % 10 === 0) {
-          renderClockFace();
-       }
+      renderClockFace();
       updateDigitalTextClocks();
     }, 1000);
 
