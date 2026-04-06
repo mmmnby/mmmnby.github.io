@@ -385,7 +385,7 @@
       const universalTimeMinute = formatNumberWithLeadingZero(currentDate.getUTCMinutes());
       const universalTimeSecond = formatNumberWithLeadingZero(currentDate.getUTCSeconds());
       
-      digitalClockElement.textContent = `Universal Time: ${universalTimeHour}:${universalTimeMinute}:${universalTimeSecond}`;
+      digitalClockElement.textContent = `UTC: ${universalTimeHour}:${universalTimeMinute}:${universalTimeSecond}`;
 
       const activeZoneData = globalTimeZones[currentZoneIndex];
       const timeDifference = activeZoneData.timeDifference;
