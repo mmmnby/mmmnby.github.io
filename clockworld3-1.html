@@ -295,7 +295,7 @@
     }
 
     function drawOuterStaticNumberRing(specificRadius) {
-      const textFontSize = specificRadius * 0.09; 
+      const textFontSize = specificRadius * 0.11; 
       canvasContext.font = `bold ${textFontSize}px sans-serif`;
       canvasContext.textAlign = 'center';
       canvasContext.textBaseline = 'middle';
@@ -322,8 +322,8 @@
       const cityRingRadius   = universalRadius * radiusMultipliers.cityLabelRing;
       const outerReferenceRadius = universalRadius * radiusMultipliers.outerTickRing;
       
-      const numberFontSize = outerReferenceRadius * 0.05;
-      const cityFontSize = outerReferenceRadius * 0.055;
+      const numberFontSize = outerReferenceRadius * 0.09;
+      const cityFontSize = outerReferenceRadius * 0.09;
       const backgroundThickness = numberFontSize * 2.2;
 
       const currentDate = new Date();
