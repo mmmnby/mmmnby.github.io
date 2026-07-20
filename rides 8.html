@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Distributed Fleet</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; background: #eef2f5; color: #333; }
+        .container { max-width: 650px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        h1, h2, h3 { color: #2c3e50; text-align: center; }
+        .section { display: none; margin-top: 20px; }
+        .active { display: block; }
+        .input-group { display: flex; gap: 10px; }
+        input, button { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
+        button { background: #10b981; color: white; border: none; cursor: pointer; font-weight: bold; font-size: 16px; }
+        button:hover { background: #059669; }
+        .driver-btn { background: #3b82f6; }
+        .driver-btn:hover { background: #2563eb; }
+        .log-box { background: #1e293b; color: #4ade80; padding: 12px; height: 150px; overflow-y: auto; font-family: monospace; font-size: 13px; border-radius: 6px; margin-top: 10px; }
+        .ride-card { border: 1px solid #e2e8f0; padding: 15px; margin-bottom: 10px; border-radius: 6px; background: #f8fafc; }
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color: white; }
+        .status-pending { background: #f59e0b; }
+        .status-accepted { background: #10b981; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Distributed Fleet Ledger</h1>
+    
+    <!-- LOGIN SELECTION -->
+    <div id="login-section" class="section active">
+        <h2>Enter Common Room</h2>
+        <input type="text" id="fleet-id" placeholder="Shared Fleet ID" value="city-fleet-1">
+        <button class="driver-btn" onclick="initApp('driver')">Connect as Driver</button>
+        <button onclick="initApp('rider')">Connect as Rider</button>
+    </div>
+
+    <!-- MAIN DASHBOARD (Shared UI for simplicity) -->
+    <div id="dashboard-section" class="section">
+        <h2><span id="role-title"></span> Dashboard</h2>
+        <p><strong>Network:</strong> <span id="network-status" style="color: #f59e0b;">Connecting...</span></p>
+        
+        <!-- RIDER CONTROLS -->
+        <div id="rider-controls" style="display: none;">
+            <h3>Request a Ride</h3>
+            <div class="input-group">
+                <input type="number" id="origin-lat" placeholder="Pickup Lat" step="any">
+                <input type="number" id="origin-lng" placeholder="Pickup Lng" step="any">
+            </div>
+            <button onclick="publishNewRide()">Broadcast Request</button>
+        </div>
+
+        <!-- DRIVER CONTROLS -->
+        <div id="driver-controls" style="display: none;">
+            <p><strong>My Location:</strong> <span id="driver-location">Fetching...</span></p>
+        </div>
+
+        <h3>Active Ledger (Local Storage)</h3>
+        <button onclick="requestNetworkSync()" style="background: #64748b; margin-bottom: 15px;">Force Network Sync</button>
+        <div id="ride-queue"></div>
+        <div class="log-box" id="system-log"></div>
+    </div>
+</div>
+
+<script>
+    const brokerUrl = 'wss://broker.hivemq.com:8884/mqtt';
+    let client = null;
+    let role = '';
+    let fleetTopic = '';
+    let myId = 'USR-' + Math.floor(Math.random() * 100000);
+    let driverLocation = { lat: null, lng: null };
+
+    // --- DECENTRALIZED DATABASE (Local Storage) ---
+    let localDB = JSON.parse(localStorage.getItem('fleet_db')) || {};
+
+    function saveDB() {
+        // Garbage Collection: Remove rides older than 12 hours to save packet space
+        const twelveHoursAgo = Date.now() - (12 * 60 * 60 * 1000);
+        for (let id in localDB) {
+            if (localDB[id].timestamp < twelveHoursAgo) {
+                delete localDB[id];
+            }
+        }
+        localStorage.setItem('fleet_db', JSON.stringify(localDB));
+        renderUI();
+    }
+
+    // --- INITIALIZATION ---
+    function initApp(selectedRole) {
+        const fleetId = document.getElementById('fleet-id').value.trim();
+        if (!fleetId) return alert('Enter a Fleet ID.');
+
+        role = selectedRole;
+        fleetTopic = `decentralized-fleet/${fleetId}/bus`;
+
+        document.getElementById('login-section').classList.remove('active');
+        document.getElementById('dashboard-section').classList.add('active');
+        document.getElementById('role-title').innerText = role === 'driver' ? 'Driver' : 'Rider';
+        
+        if (role === 'rider') {
+            document.getElementById('rider-controls').style.display = 'block';
+            document.getElementById('origin-lat').value = (37.77 + Math.random() * 0.1).toFixed(4);
+            document.getElementById('origin-lng').value = (-122.41 + Math.random() * 0.1).toFixed(4);
+        } else {
+            document.getElementById('driver-controls').style.display = 'block';
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    driverLocation.lat = pos.coords.latitude;
+                    driverLocation.lng = pos.coords.longitude;
+                    document.getElementById('driver-location').innerText = `${driverLocation.lat.toFixed(4)}, ${driverLocation.lng.toFixed(4)}`;
+                },
+                () => { driverLocation = { lat: 37.77, lng: -122.41 }; } // Fallback
+            );
+        }
+
+        renderUI(); // Render immediate offline state
+        connectToMQTT();
+    }
+
+    // --- NETWORK & SYNC LOGIC ---
+    function connectToMQTT() {
+        logMsg('Connecting to public swarm...');
+        const clientId = 'mqttjs_' + Math.random().toString(16).substr(2, 8);
+        
+        client = mqtt.connect(brokerUrl, { clientId: clientId, clean: true });
+
+        client.on('connect', () => {
+            document.getElementById('network-status').innerText = 'Online (Swarm Connected)';
+            document.getElementById('network-status').style.color = '#10b981';
+            
+            client.subscribe(fleetTopic, { qos: 0 });
+            
+            // Announce presence and ask swarm for missed updates
+            requestNetworkSync();
+        });
+
+        client.on('message', (topic, message) => {
+            try {
+                const payload = JSON.parse(message.toString());
+                handleNetworkMessage(payload);
+            } catch (e) { logMsg('Corrupted packet received.'); }
+        });
+
+        client.on('offline', () => {
+            document.getElementById('network-status').innerText = 'Offline (Using Local Storage)';
+            document.getElementById('network-status').style.color = '#ef4444';
+        });
+    }
+
+    function requestNetworkSync() {
+        if (!client || !client.connected) return;
+        logMsg('Requesting ledger sync from swarm...');
+        client.publish(fleetTopic, JSON.stringify({ type: 'REQUEST_SYNC', senderId: myId }));
+    }
+
+    function handleNetworkMessage(payload) {
+        // Ignore our own broadcast reflections
+        if (payload.senderId === myId) return;
+
+        if (payload.type === 'REQUEST_SYNC') {
+            // Another peer connected and wants the database.
+            // Add a slight random delay to prevent 100 peers from replying at the exact same millisecond.
+            setTimeout(() => {
+                logMsg(`Sending database sync to ${payload.senderId}...`);
+                client.publish(fleetTopic, JSON.stringify({
+                    type: 'FULL_SYNC',
+                    senderId: myId,
+                    db: localDB
+                }));
+            }, Math.random() * 1000);
+        } 
+        else if (payload.type === 'FULL_SYNC') {
+            logMsg(`Received database sync from ${payload.senderId}. Merging...`);
+            mergeIncomingDB(payload.db);
+        }
+        else if (payload.type === 'RIDE_UPDATE') {
+            logMsg(`Received update for ride ${payload.ride.id}`);
+            mergeSingleRide(payload.ride);
+        }
+    }
+
+    // --- MERGING ALGORITHMS ---
+    function mergeIncomingDB(incomingDB) {
+        for (let id in incomingDB) {
+            mergeSingleRide(incomingDB[id]);
+        }
+        saveDB();
+    }
+
+    function mergeSingleRide(incomingRide) {
+        const localRide = localDB[incomingRide.id];
+
+        // 1. If we don't have this ride, add it.
+        if (!localRide) {
+            localDB[incomingRide.id] = incomingRide;
+            return saveDB();
+        }
+
+        // 2. State Progression Logic (Conflict Resolution)
+        // 'accepted' overrides 'pending'
+        if (incomingRide.status === 'accepted' && localRide.status === 'pending') {
+            localDB[incomingRide.id] = incomingRide;
+        } 
+        // If both think they are 'accepted' by different drivers, oldest timestamp wins
+        else if (incomingRide.status === 'accepted' && localRide.status === 'accepted') {
+            if (incomingRide.acceptedAt < localRide.acceptedAt) {
+                localDB[incomingRide.id] = incomingRide; // The other driver was faster
+            }
+        }
+        
+        saveDB();
+    }
+
+    // --- ACTIONS ---
+    function publishNewRide() {
+        const oLat = parseFloat(document.getElementById('origin-lat').value);
+        const oLng = parseFloat(document.getElementById('origin-lng').value);
+
+        const newRide = {
+            id: 'REQ-' + Date.now(),
+            requesterId: myId,
+            timestamp: Date.now(),
+            origin: { lat: oLat, lng: oLng },
+            status: 'pending',
+            driverId: null,
+            acceptedAt: null
+        };
+
+        // Instantly save to local DB (works even if offline)
+        mergeSingleRide(newRide);
+        
+        if (client && client.connected) {
+            client.publish(fleetTopic, JSON.stringify({ type: 'RIDE_UPDATE', senderId: myId, ride: newRide }));
+            logMsg('Broadcasted new ride to swarm.');
+        } else {
+            logMsg('Offline. Saved locally. Will broadcast when reconnected.');
+        }
+    }
+
+    function acceptRide(rideId) {
+        let ride = localDB[rideId];
+        if (!ride || ride.status === 'accepted') return;
+
+        ride.status = 'accepted';
+        ride.driverId = myId;
+        ride.acceptedAt = Date.now();
+
+        // Save locally
+        mergeSingleRide(ride);
+
+        // Tell network
+        if (client && client.connected) {
+            client.publish(fleetTopic, JSON.stringify({ type: 'RIDE_UPDATE', senderId: myId, ride: ride }));
+            logMsg(`Accepted ride ${rideId} and broadcasted update.`);
+        }
+    }
+
+    // --- UI RENDERING ---
+    function renderUI() {
+        const queueContainer = document.getElementById('ride-queue');
+        queueContainer.innerHTML = '';
+
+        // Convert DB object to array for sorting
+        let rides = Object.values(localDB);
+        
+        // Sort: Pending first, then accepted. Within those, newest first.
+        rides.sort((a, b) => {
+            if (a.status === b.status) return b.timestamp - a.timestamp;
+            return a.status === 'pending' ? -1 : 1;
+        });
+
+        if (rides.length === 0) {
+            queueContainer.innerHTML = '<p style="color: #64748b;">No active rides in the ledger.</p>';
+            return;
+        }
+
+        rides.forEach(ride => {
+            const div = document.createElement('div');
+            div.className = 'ride-card';
+            
+            const isMyRide = ride.requesterId === myId;
+            const isMyJob = ride.driverId === myId;
+            
+            let statusHtml = ride.status === 'pending' 
+                ? '<span class="status-badge status-pending">Pending</span>'
+                : `<span class="status-badge status-accepted">Accepted by ${ride.driverId}</span>`;
+
+            let actionBtn = '';
+            if (role === 'driver' && ride.status === 'pending') {
+                actionBtn = `<button class="driver-btn" style="margin-top: 10px;" onclick="acceptRide('${ride.id}')">Accept Job</button>`;
+            } else if (isMyJob) {
+                actionBtn = `<p style="color: #3b82f6; font-weight: bold;">You accepted this job.</p>`;
+            } else if (isMyRide && ride.status === 'accepted') {
+                actionBtn = `<p style="color: #10b981; font-weight: bold;">Your driver is en route!</p>`;
+            }
+
+            div.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <strong>${ride.id}</strong>
+                    ${statusHtml}
+                </div>
+                <p style="margin: 4px 0; font-size: 14px;"><strong>Pickup:</strong> ${ride.origin.lat}, ${ride.origin.lng}</p>
+                ${actionBtn}
+            `;
+            queueContainer.appendChild(div);
+        });
+    }
+
+    function logMsg(msg) {
+        const logContainer = document.getElementById('system-log');
+        const time = new Date().toLocaleTimeString();
+        logContainer.innerHTML += `[${time}] ${msg}<br>`;
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+</script>
+</body>
+</html>
